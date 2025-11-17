@@ -40,6 +40,10 @@
 
 #include <spdlog/fmt/fmt.h>
 
+#ifdef OPENXR_ENABLED
+#include "openxr/vr_renderer.h"
+#endif
+
 uintptr_t gfxFramebuffer;
 std::stack<std::string> currentDir;
 
@@ -1133,6 +1137,8 @@ static void gfx_matrix_mul(float res[4][4], const float a[4][4], const float b[4
     memcpy(res, tmp, sizeof(tmp));
 }
 
+// memcpy(dest, src, sizeof(Mat4));
+
 static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
     float matrix[4][4];
 
@@ -1171,6 +1177,15 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
         } else {
             gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
         }
+#ifdef OPENXR_ENABLED
+        // Override projection matrix with VR-specific projection when in VR mode
+        if (g_rsp.vr_rendering_active && g_rsp.vr_matrices_valid) {
+            memcpy(g_rsp.P_matrix, g_rsp.vr_projection_override, sizeof(g_rsp.P_matrix));
+            // mtxf_copy(rsp.P_matrix, rsp.vr_projection_override);
+        }
+        gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
+
+#endif
     } else { // G_MTX_MODELVIEW
         if ((parameters & mtx_push) && g_rsp.modelview_matrix_stack_size < 11) {
             ++g_rsp.modelview_matrix_stack_size;
@@ -1186,6 +1201,14 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
                            g_rsp.modelview_matrix_stack[g_rsp.modelview_matrix_stack_size - 1]);
         }
         g_rsp.lights_changed = 1;
+#ifdef OPENXR_ENABLED
+        // Apply VR view matrix offset (IPD) to modelview matrix when in VR mode
+        if (g_rsp.vr_rendering_active && g_rsp.vr_matrices_valid) {
+            float temp_matrix[4][4];
+            memcpy(temp_matrix, g_rsp.modelview_matrix_stack[g_rsp.modelview_matrix_stack_size - 1], sizeof(temp_matrix));
+            gfx_matrix_mul(g_rsp.modelview_matrix_stack[g_rsp.modelview_matrix_stack_size - 1], temp_matrix, g_rsp.vr_view_offset);
+        }
+#endif
     }
     gfx_matrix_mul(g_rsp.MP_matrix, g_rsp.modelview_matrix_stack[g_rsp.modelview_matrix_stack_size - 1],
                    g_rsp.P_matrix);
