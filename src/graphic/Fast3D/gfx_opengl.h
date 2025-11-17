@@ -5,4 +5,7 @@
 
 extern struct GfxRenderingAPI gfx_opengl_api;
 
+void gfx_opengl_set_vr_rendering_mode(bool enabled);
+bool gfx_opengl_get_vr_rendering_mode();
+
 #endif

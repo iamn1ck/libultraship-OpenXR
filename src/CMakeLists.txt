@@ -6,6 +6,11 @@ set_property(TARGET libultraship PROPERTY CXX_STANDARD 20)
 # Need to set C11 for libgfxd (_Alignas)
 set_property(TARGET libultraship PROPERTY C_STANDARD 11)
 
+
+target_include_directories(libultraship PRIVATE
+    ${CMAKE_SOURCE_DIR}/soh/include
+)
+
 set(INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../include)
 option(USE_OPENGLES "Enable GLES3" OFF)
 option(GFX_DEBUG_DISASSEMBLER "Enable libgfxd" OFF)
@@ -230,6 +235,90 @@ endif()
 
 target_link_libraries(libultraship PUBLIC prism)
 
+target_link_libraries(libultraship
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/libopenxr_loader.so
+)
+
+
+# ===========================================================
+# Optional OpenXR + Vulkan integration for libultraship
+# ===========================================================
+option(OPENXR_ENABLED "Enable OpenXR (VR) support" ON)
+
+if(OPENXR_ENABLED)
+    message(STATUS "Building libultraship with OpenXR support")
+
+    # --- Try to find OpenXR and Vulkan normally ---
+    find_package(OpenXR)
+    find_package(Vulkan)
+
+    set(OpenXR_INCLUDE_DIRS "/workspace/include")
+    set(Vulkan_INCLUDE_DIRS "/workspace/include")
+
+    # --- If OpenXR not found, fall back to vendored SDK ---
+    if(NOT OpenXR_FOUND)
+        set(OpenXR_ROOT "${CMAKE_SOURCE_DIR}/external/OpenXR-SDK")
+        set(OpenXR_INCLUDE_DIRS "${OpenXR_ROOT}/include")
+
+        # Optionally build the OpenXR loader directly (if present)
+        if(EXISTS "${OpenXR_ROOT}/src/loader/CMakeLists.txt")
+            add_subdirectory(${OpenXR_ROOT}/src/loader EXCLUDE_FROM_ALL)
+            target_link_libraries(libultraship PRIVATE openxr_loader)
+        endif()
+    endif()
+
+    # --- Add include directories ---
+    if(OpenXR_INCLUDE_DIRS)
+        target_include_directories(libultraship PRIVATE ${OpenXR_INCLUDE_DIRS})
+    endif()
+
+    if(Vulkan_INCLUDE_DIRS)
+        target_include_directories(libultraship PRIVATE ${Vulkan_INCLUDE_DIRS})
+    endif()
+
+    # --- Link libraries ---
+    if(Vulkan_LIBRARIES)
+        target_link_libraries(libultraship PRIVATE ${Vulkan_LIBRARIES})
+    endif()
+
+    if(OpenXR_LIBRARIES)
+        target_link_libraries(libultraship PRIVATE ${OpenXR_LIBRARIES})
+    endif()
+
+    # --- Define macro so #ifdef OPENXR_ENABLED works ---
+    target_compile_definitions(libultraship PRIVATE OPENXR_ENABLED)
+    target_compile_definitions(libultraship PRIVATE RAPI_GL=1)
+    target_compile_definitions(libultraship PRIVATE USE_GLES=1)
+    target_compile_definitions(libultraship PRIVATE WAPI_SDL2=1)
+    
+    target_compile_definitions(libultraship PRIVATE
+        XR_USE_GRAPHICS_API_VULKAN
+        XR_USE_PLATFORM_ANDROID
+        XR_KHR_vulkan_enable
+        XR_KHR_vulkan_enable2
+    )
+
+    # Collect all OpenXR source and header files
+    file(GLOB Source_Files__OpenXR RELATIVE ${CMAKE_CURRENT_SOURCE_DIR}
+        "openxr/*.h"
+        "openxr/*.cpp"
+        "openxr/*.c"
+    )
+
+    # Group files in IDEs (Visual Studio / Xcode)
+    source_group("openxr" FILES ${Source_Files__OpenXR})
+
+    # Add them to the build
+    target_sources(libultraship PRIVATE ${Source_Files__OpenXR})
+
+    # Include the OpenXR directory so headers like openxr/openxr_manager.h resolve
+    target_include_directories(libultraship PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/openxr)
+
+else()
+    message(STATUS "Building libultraship without OpenXR support")
+endif()
+
 #=================== Compile Options & Defs ===================
 
 target_compile_definitions(libultraship PRIVATE ${GBI_UCODE})
@@ -285,7 +374,7 @@ else()
         $<$<CONFIG:Debug>:_DEBUG>
         $<$<NOT:$<CONFIG:Debug>>:NDEBUG>
         $<$<CONFIG:Debug>:SPDLOG_ACTIVE_LEVEL=0>
-        $<$<NOT:$<CONFIG:Debug>>:SPDLOG_ACTIVE_LEVEL=1>
+        $<$<NOT:$<CONFIG:Debug>>:SPDLOG_ACTIVE_LEVEL=0>
         $<$<BOOL:${USE_OPENGLES}>:USE_OPENGLES>
         $<$<BOOL:${GFX_DEBUG_DISASSEMBLER}>:GFX_DEBUG_DISASSEMBLER>
     )
