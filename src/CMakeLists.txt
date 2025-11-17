@@ -237,7 +237,7 @@ target_link_libraries(libultraship PUBLIC prism)
 
 target_link_libraries(libultraship
     PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/libopenxr_loader.so
+        /workspace/lib/libopenxr_loader.so
 )
 
 
