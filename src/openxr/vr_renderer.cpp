@@ -410,7 +410,7 @@ int vr_renderer_get_view_matrix(int eye, float* matrix)
     }
     
     pose_to_view_matrix(g_vr_renderer.views[eye].pose, matrix);
-    
+
     return 1;
 }
 
