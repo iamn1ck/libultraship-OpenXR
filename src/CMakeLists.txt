@@ -235,12 +235,6 @@ endif()
 
 target_link_libraries(libultraship PUBLIC prism)
 
-target_link_libraries(libultraship
-    PRIVATE
-        /workspace/lib/libopenxr_loader.so
-)
-
-
 # ===========================================================
 # Optional OpenXR + Vulkan integration for libultraship
 # ===========================================================
@@ -285,6 +279,17 @@ if(OPENXR_ENABLED)
     if(OpenXR_LIBRARIES)
         target_link_libraries(libultraship PRIVATE ${OpenXR_LIBRARIES})
     endif()
+
+    set(OPENXR_LOADER_PATH "/workspace/lib/libopenxr_loader.so")
+
+    add_library(openxr_loader SHARED IMPORTED)
+
+    set_target_properties(openxr_loader PROPERTIES
+        IMPORTED_LOCATION ${OPENXR_LOADER_PATH}
+    )
+
+    target_link_libraries(libultraship PRIVATE openxr_loader)
+
 
     # --- Define macro so #ifdef OPENXR_ENABLED works ---
     target_compile_definitions(libultraship PRIVATE OPENXR_ENABLED)
