@@ -355,24 +355,22 @@ static void pose_to_view_matrix(const XrPosef& pose, float* matrix)
     const XrVector3f& p = pose.position;
     
     // Create rotation matrix from quaternion
-    // Negate q.y to fix inverted X-axis (yaw) rotation
-    float qy = -q.y;
     float rotMatrix[16];
     memset(rotMatrix, 0, 16 * sizeof(float));
     
-    rotMatrix[0] = 1.0f - 2.0f * (qy * qy + q.z * q.z);
-    rotMatrix[1] = 2.0f * (q.x * qy + q.w * q.z);
-    rotMatrix[2] = 2.0f * (q.x * q.z - q.w * qy);
+    rotMatrix[0] = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    rotMatrix[1] = 2.0f * (q.x * q.y + q.w * q.z);
+    rotMatrix[2] = 2.0f * (q.x * q.z - q.w * q.y);
     rotMatrix[3] = 0.0f;
     
-    rotMatrix[4] = 2.0f * (q.x * qy - q.w * q.z);
+    rotMatrix[4] = 2.0f * (q.x * q.y - q.w * q.z);
     rotMatrix[5] = 1.0f - 2.0f * (q.x * q.x + q.z * q.z);
-    rotMatrix[6] = 2.0f * (qy * q.z + q.w * q.x);
+    rotMatrix[6] = 2.0f * (q.y * q.z + q.w * q.x);
     rotMatrix[7] = 0.0f;
     
-    rotMatrix[8] = 2.0f * (q.x * q.z + q.w * qy);
-    rotMatrix[9] = 2.0f * (qy * q.z - q.w * q.x);
-    rotMatrix[10] = 1.0f - 2.0f * (q.x * q.x + qy * qy);
+    rotMatrix[8] = 2.0f * (q.x * q.z + q.w * q.y);
+    rotMatrix[9] = 2.0f * (q.y * q.z - q.w * q.x);
+    rotMatrix[10] = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
     rotMatrix[11] = 0.0f;
     
     rotMatrix[12] = 0.0f;
@@ -383,17 +381,17 @@ static void pose_to_view_matrix(const XrPosef& pose, float* matrix)
     // Invert the view matrix (view = inverse of pose)
     // For a rigid body transform, inverse is transpose of rotation and negated position
     matrix[0] = rotMatrix[0];
-    matrix[1] = rotMatrix[1];
-    matrix[2] = rotMatrix[2];
+    matrix[1] = rotMatrix[4];
+    matrix[2] = rotMatrix[8];
     matrix[3] = 0.0f;
     
-    matrix[4] = rotMatrix[4];
+    matrix[4] = rotMatrix[1];
     matrix[5] = rotMatrix[5];
-    matrix[6] = rotMatrix[6];
+    matrix[6] = rotMatrix[9];
     matrix[7] = 0.0f;
     
-    matrix[8] = rotMatrix[8];
-    matrix[9] = rotMatrix[9];
+    matrix[8] = rotMatrix[2];
+    matrix[9] = rotMatrix[6];
     matrix[10] = rotMatrix[10];
     matrix[11] = 0.0f;
     
