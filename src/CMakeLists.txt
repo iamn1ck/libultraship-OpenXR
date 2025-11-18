@@ -280,12 +280,11 @@ if(OPENXR_ENABLED)
         target_link_libraries(libultraship PRIVATE ${OpenXR_LIBRARIES})
     endif()
 
-    set(OPENXR_LOADER_PATH "/workspace/lib/libopenxr_loader.so")
-
     add_library(openxr_loader SHARED IMPORTED)
 
     set_target_properties(openxr_loader PROPERTIES
-        IMPORTED_LOCATION ${OPENXR_LOADER_PATH}
+        IMPORTED_LOCATION
+            "${CMAKE_CURRENT_SOURCE_DIR}/app/src/main/jniLibs/arm64-v8a/libopenxr_loader.so"
     )
 
     target_link_libraries(libultraship PRIVATE openxr_loader)
