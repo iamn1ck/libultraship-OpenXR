@@ -322,13 +322,16 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             GLint current_fbo = 0;
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
             GLuint expected_fbo = vr_opengl_get_framebuffer(eye);
-            
+
             // Render the game to the VR framebuffer
             gfx_run(commands, mtxReplacements);
             
             // Check if framebuffer is still bound after gfx_run
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
+                    gui->StartDraw();
             
+        gui->EndDraw();
+
             
             // Disable VR rendering mode
             gfx_opengl_set_vr_rendering_mode(false);
@@ -340,7 +343,6 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
 
         // Restore window dimensions
         gfx_current_dimensions = saved_dimensions;
-        gui->EndDraw();
 
         vr_renderer_end_frame();
 
