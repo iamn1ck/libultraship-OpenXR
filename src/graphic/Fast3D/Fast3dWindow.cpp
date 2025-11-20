@@ -272,7 +272,6 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         auto saved_dimensions = gfx_current_dimensions;
 
         // Start frame once before rendering both eyes
-        gui->StartDraw();
         gfx_start_frame();
 
         // Render to each eye
@@ -328,9 +327,10 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             
             // Check if framebuffer is still bound after gfx_run
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
-                    gui->StartDraw();
             
-        gui->EndDraw();
+            gui->StartDraw();
+
+            gui->EndDraw();
 
             
             // Disable VR rendering mode
