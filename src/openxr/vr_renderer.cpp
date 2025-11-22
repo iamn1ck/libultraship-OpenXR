@@ -38,6 +38,16 @@ static struct {
     
     // Swapchain image indices
     uint32_t swapchainIndices[2];
+
+    // Quad layer state
+    OpenXRSwapchain* quadSwapchain;
+    bool quadLayerInitialized;
+    bool quadLayerActive;
+    uint32_t quadSwapchainIndex;
+    struct {
+        XrPosef pose;
+        XrExtent2Df size;
+    } quadLayer;
 } g_vr_renderer = {
     false,
     nullptr,
@@ -50,7 +60,15 @@ static struct {
     false,
     {},
     false,
-    {0, 0}
+    {0, 0},
+    nullptr,
+    false,
+    false,
+    0,
+    {
+        {{0, 0, 0, 1}, {0, 0, -1}}, // Default pose: 1m in front
+        {1.0f, 1.0f}                // Default size: 1x1m
+    }
 };
 
 int vr_renderer_init(void)
@@ -115,6 +133,11 @@ void vr_renderer_shutdown(void)
     
     destroyOpenXRSwapchain(g_vr_renderer.leftSwapchain);
     destroyOpenXRSwapchain(g_vr_renderer.rightSwapchain);
+    if (g_vr_renderer.quadLayerInitialized) {
+        destroyOpenXRSwapchain(g_vr_renderer.quadSwapchain);
+        g_vr_renderer.quadSwapchain = nullptr;
+        g_vr_renderer.quadLayerInitialized = false;
+    }
     
     g_vr_renderer.leftSwapchain = nullptr;
     g_vr_renderer.rightSwapchain = nullptr;
@@ -242,6 +265,18 @@ int vr_renderer_end_frame(void)
         }
     }
     
+    // Release quad layer swapchain image if active
+    if (g_vr_renderer.quadLayerActive) {
+        XrSwapchainImageReleaseInfo releaseInfo{};
+        releaseInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
+        
+        XrResult result = xrReleaseSwapchainImage(g_vr_renderer.quadSwapchain->swapchain, &releaseInfo);
+        
+        if (result != XR_SUCCESS) {
+            cerr << "Failed to release quad swapchain image: " << result << endl;
+        }
+    }
+    
     // Submit frame to OpenXR
     XrCompositionLayerProjectionView projectionViews[2]{};
     
@@ -263,26 +298,45 @@ int vr_renderer_end_frame(void)
     layer.viewCount = 2;
     layer.views = projectionViews;
     
-    const XrCompositionLayerBaseHeader* layers[] = {
-        (const XrCompositionLayerBaseHeader*)&layer
-    };
+    // Quad layer
+    XrCompositionLayerQuad quadLayer{};
+    quadLayer.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
+    quadLayer.space = g_vr_renderer.xrSpace;
+    quadLayer.subImage.swapchain = g_vr_renderer.quadSwapchain ? g_vr_renderer.quadSwapchain->swapchain : XR_NULL_HANDLE;
+    quadLayer.subImage.imageRect.offset = {0, 0};
+    if (g_vr_renderer.quadSwapchain) {
+        quadLayer.subImage.imageRect.extent = {(int32_t)g_vr_renderer.quadSwapchain->width, (int32_t)g_vr_renderer.quadSwapchain->height};
+    }
+    quadLayer.subImage.imageArrayIndex = 0;
+    quadLayer.pose = g_vr_renderer.quadLayer.pose;
+    quadLayer.size = g_vr_renderer.quadLayer.size;
+    quadLayer.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    
+    std::vector<const XrCompositionLayerBaseHeader*> layers;
+    layers.push_back((const XrCompositionLayerBaseHeader*)&layer);
+    
+    if (g_vr_renderer.quadLayerActive) {
+        layers.push_back((const XrCompositionLayerBaseHeader*)&quadLayer);
+    }
     
     XrFrameEndInfo frameEndInfo{};
     frameEndInfo.type = XR_TYPE_FRAME_END_INFO;
     frameEndInfo.displayTime = g_vr_renderer.frameState.predictedDisplayTime;
     frameEndInfo.environmentBlendMode = XR_ENVIRONMENT_BLEND_MODE_OPAQUE;
-    frameEndInfo.layerCount = 1;
-    frameEndInfo.layers = layers;
+    frameEndInfo.layerCount = (uint32_t)layers.size();
+    frameEndInfo.layers = layers.data();
     
     XrResult result = xrEndFrame(g_vr_renderer.xrSession, &frameEndInfo);
     
     if (result != XR_SUCCESS) {
         cerr << "Failed to end OpenXR frame: " << result << endl;
         g_vr_renderer.frameActive = false;
+        g_vr_renderer.quadLayerActive = false;
         return 0;
     }
     
     g_vr_renderer.frameActive = false;
+    g_vr_renderer.quadLayerActive = false;
     return 1;
 }
 
@@ -453,7 +507,6 @@ uint32_t vr_renderer_get_swapchain_format(int eye)
     return (uint32_t)swapchain->format;
 }
 
-// Get the number of swapchain images per eye
 uint32_t vr_renderer_get_swapchain_image_count(int eye)
 {
     if (!g_vr_renderer.initialized || eye < 0 || eye > 1) {
@@ -466,5 +519,103 @@ uint32_t vr_renderer_get_swapchain_image_count(int eye)
     }
     
     return swapchain->imageCount;
+}
+
+int vr_renderer_init_quad_layer(uint32_t width, uint32_t height)
+{
+    if (!g_vr_renderer.initialized) {
+        cerr << "VR renderer not initialized" << endl;
+        return 0;
+    }
+    
+    if (g_vr_renderer.quadLayerInitialized) {
+        cout << "Quad layer already initialized" << endl;
+        return 1;
+    }
+    
+    cout << "Initializing quad layer..." << endl;
+    
+    if (!createQuadSwapchain(
+            g_vr_renderer.xrInstance,
+            g_vr_renderer.xrSystemId,
+            g_vr_renderer.xrSession,
+            width,
+            height,
+            &g_vr_renderer.quadSwapchain)) {
+        cerr << "Failed to create quad swapchain" << endl;
+        return 0;
+    }
+    
+    g_vr_renderer.quadLayerInitialized = true;
+    return 1;
+}
+
+int vr_renderer_render_quad_layer(void)
+{
+    if (!g_vr_renderer.initialized || !g_vr_renderer.quadLayerInitialized || !g_vr_renderer.frameActive) {
+        return 0;
+    }
+    
+    OpenXRSwapchain* swapchain = g_vr_renderer.quadSwapchain;
+    
+    // Acquire swapchain image
+    XrSwapchainImageAcquireInfo acquireInfo{};
+    acquireInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO;
+    
+    uint32_t imageIndex = 0;
+    XrResult result = xrAcquireSwapchainImage(swapchain->swapchain, &acquireInfo, &imageIndex);
+    
+    if (result != XR_SUCCESS) {
+        cerr << "Failed to acquire quad swapchain image: " << result << endl;
+        return 0;
+    }
+    
+    g_vr_renderer.quadSwapchainIndex = imageIndex;
+    
+    // Wait for swapchain image
+    XrSwapchainImageWaitInfo waitInfo{};
+    waitInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO;
+    waitInfo.timeout = XR_INFINITE_DURATION;
+    
+    result = xrWaitSwapchainImage(swapchain->swapchain, &waitInfo);
+    
+    if (result != XR_SUCCESS) {
+        cerr << "Failed to wait for quad swapchain image: " << result << endl;
+        return 0;
+    }
+    
+    g_vr_renderer.quadLayerActive = true;
+    return 1;
+}
+
+void vr_renderer_set_quad_layer_pose(float position_x, float position_y, float position_z,
+                                     float orientation_x, float orientation_y, float orientation_z, float orientation_w)
+{
+    g_vr_renderer.quadLayer.pose.position = {position_x, position_y, position_z};
+    g_vr_renderer.quadLayer.pose.orientation = {orientation_x, orientation_y, orientation_z, orientation_w};
+}
+
+void vr_renderer_set_quad_layer_size(float width, float height)
+{
+    g_vr_renderer.quadLayer.size = {width, height};
+}
+
+VkImage vr_renderer_get_quad_swapchain_image(void)
+{
+    if (!g_vr_renderer.initialized || !g_vr_renderer.quadLayerInitialized) {
+        return VK_NULL_HANDLE;
+    }
+    
+    OpenXRSwapchain* swapchain = g_vr_renderer.quadSwapchain;
+    if (!swapchain || !swapchain->images) {
+        return VK_NULL_HANDLE;
+    }
+    
+    uint32_t imageIndex = g_vr_renderer.quadSwapchainIndex;
+    if (imageIndex >= swapchain->imageCount) {
+        return VK_NULL_HANDLE;
+    }
+    
+    return swapchain->images[imageIndex];
 }
 
