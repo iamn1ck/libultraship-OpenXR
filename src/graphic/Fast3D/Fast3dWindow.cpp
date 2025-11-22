@@ -389,6 +389,41 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             }
         }
 
+        // Render Quad Layer 2 (Hello Triangle)
+        static bool quad2_initialized = false;
+        if (!quad2_initialized) {
+            // Initialize quad layer 2 (512x512 for the triangle)
+            if (vr_renderer_init_quad_layer2(3840, 2160)) {
+                // Set pose (slightly to the right of the first quad)
+                vr_renderer_set_quad_layer2_pose(0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+                vr_renderer_set_quad_layer2_size(0.5f, 0.5f); // 0.5m x 0.5m
+                
+                // Initialize OpenGL for quad 2
+                vr_opengl_init_quad2(3840, 2160);
+                
+                quad2_initialized = true;
+                printf("Quad layer 2 initialized for hello triangle\n");
+            }
+        }
+        
+        if (quad2_initialized) {
+            if (vr_opengl_begin_quad2()) {
+                // Clear to black
+                glClearColor(0.0f, 0.0f, 0.0f, 0.5f);
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                
+                // Draw hello triangle
+                vr_opengl_draw_hello_triangle();
+                
+                // Always submit the triangle quad
+                if (vr_renderer_render_quad_layer2()) {
+                    vr_opengl_end_quad2();
+                } else {
+                    vr_opengl_cancel_quad2();
+                }
+            }
+        }
+
         // Restore dimensions again just in case
         gfx_current_dimensions = saved_dimensions;
 

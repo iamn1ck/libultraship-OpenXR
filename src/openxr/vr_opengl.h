@@ -58,6 +58,17 @@ unsigned int vr_opengl_get_quad_framebuffer(void);
 // Get the quad texture ID
 unsigned int vr_opengl_get_quad_texture(void);
 
+// Quad layer 2 functions
+int vr_opengl_init_quad2(uint32_t width, uint32_t height);
+int vr_opengl_begin_quad2(void);
+void vr_opengl_end_quad2(void);
+void vr_opengl_cancel_quad2(void);
+unsigned int vr_opengl_get_quad_framebuffer2(void);
+unsigned int vr_opengl_get_quad_texture2(void);
+
+// Helper to draw a hello triangle
+void vr_opengl_draw_hello_triangle(void);
+
 // #ifdef __cplusplus
 // }
 // #endif

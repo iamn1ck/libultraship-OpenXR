@@ -48,6 +48,16 @@ static struct {
         XrPosef pose;
         XrExtent2Df size;
     } quadLayer;
+
+    // Quad layer 2 state
+    OpenXRSwapchain* quadSwapchain2;
+    bool quadLayer2Initialized;
+    bool quadLayer2Active;
+    uint32_t quadSwapchainIndex2;
+    struct {
+        XrPosef pose;
+        XrExtent2Df size;
+    } quadLayer2;
 } g_vr_renderer = {
     false,
     nullptr,
@@ -61,6 +71,14 @@ static struct {
     {},
     false,
     {0, 0},
+    nullptr,
+    false,
+    false,
+    0,
+    {
+        {{0, 0, 0, 1}, {0, 0, -1}}, // Default pose: 1m in front
+        {1.0f, 1.0f}                // Default size: 1x1m
+    },
     nullptr,
     false,
     false,
@@ -137,6 +155,12 @@ void vr_renderer_shutdown(void)
         destroyOpenXRSwapchain(g_vr_renderer.quadSwapchain);
         g_vr_renderer.quadSwapchain = nullptr;
         g_vr_renderer.quadLayerInitialized = false;
+    }
+
+    if (g_vr_renderer.quadLayer2Initialized) {
+        destroyOpenXRSwapchain(g_vr_renderer.quadSwapchain2);
+        g_vr_renderer.quadSwapchain2 = nullptr;
+        g_vr_renderer.quadLayer2Initialized = false;
     }
     
     g_vr_renderer.leftSwapchain = nullptr;
@@ -276,6 +300,18 @@ int vr_renderer_end_frame(void)
             cerr << "Failed to release quad swapchain image: " << result << endl;
         }
     }
+
+    // Release quad layer 2 swapchain image if active
+    if (g_vr_renderer.quadLayer2Active) {
+        XrSwapchainImageReleaseInfo releaseInfo{};
+        releaseInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_RELEASE_INFO;
+        
+        XrResult result = xrReleaseSwapchainImage(g_vr_renderer.quadSwapchain2->swapchain, &releaseInfo);
+        
+        if (result != XR_SUCCESS) {
+            cerr << "Failed to release quad swapchain 2 image: " << result << endl;
+        }
+    }
     
     // Submit frame to OpenXR
     XrCompositionLayerProjectionView projectionViews[2]{};
@@ -318,6 +354,24 @@ int vr_renderer_end_frame(void)
     if (g_vr_renderer.quadLayerActive) {
         layers.push_back((const XrCompositionLayerBaseHeader*)&quadLayer);
     }
+
+    // Quad layer 2
+    XrCompositionLayerQuad quadLayer2{};
+    quadLayer2.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
+    quadLayer2.space = openxr_get_view_space(); // Use View space (head-locked)
+    quadLayer2.subImage.swapchain = g_vr_renderer.quadSwapchain2 ? g_vr_renderer.quadSwapchain2->swapchain : XR_NULL_HANDLE;
+    quadLayer2.subImage.imageRect.offset = {0, 0};
+    if (g_vr_renderer.quadSwapchain2) {
+        quadLayer2.subImage.imageRect.extent = {(int32_t)g_vr_renderer.quadSwapchain2->width, (int32_t)g_vr_renderer.quadSwapchain2->height};
+    }
+    quadLayer2.subImage.imageArrayIndex = 0;
+    quadLayer2.pose = g_vr_renderer.quadLayer2.pose;
+    quadLayer2.size = g_vr_renderer.quadLayer2.size;
+    quadLayer2.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+
+    if (g_vr_renderer.quadLayer2Active) {
+        layers.push_back((const XrCompositionLayerBaseHeader*)&quadLayer2);
+    }
     
     XrFrameEndInfo frameEndInfo{};
     frameEndInfo.type = XR_TYPE_FRAME_END_INFO;
@@ -336,7 +390,9 @@ int vr_renderer_end_frame(void)
     }
     
     g_vr_renderer.frameActive = false;
+    g_vr_renderer.frameActive = false;
     g_vr_renderer.quadLayerActive = false;
+    g_vr_renderer.quadLayer2Active = false;
     return 1;
 }
 
@@ -629,5 +685,115 @@ void vr_renderer_get_quad_viewport(uint32_t* width, uint32_t* height)
     
     *width = g_vr_renderer.quadSwapchain->width;
     *height = g_vr_renderer.quadSwapchain->height;
+}
+
+int vr_renderer_init_quad_layer2(uint32_t width, uint32_t height)
+{
+    if (!g_vr_renderer.initialized) {
+        cerr << "VR renderer not initialized" << endl;
+        return 0;
+    }
+    
+    if (g_vr_renderer.quadLayer2Initialized) {
+        cout << "Quad layer 2 already initialized" << endl;
+        return 1;
+    }
+    
+    cout << "Initializing quad layer 2..." << endl;
+    
+    if (!createQuadSwapchain(
+            g_vr_renderer.xrInstance,
+            g_vr_renderer.xrSystemId,
+            g_vr_renderer.xrSession,
+            width,
+            height,
+            &g_vr_renderer.quadSwapchain2)) {
+        cerr << "Failed to create quad swapchain 2" << endl;
+        return 0;
+    }
+    
+    g_vr_renderer.quadLayer2Initialized = true;
+    return 1;
+}
+
+int vr_renderer_render_quad_layer2(void)
+{
+    if (!g_vr_renderer.initialized || !g_vr_renderer.quadLayer2Initialized || !g_vr_renderer.frameActive) {
+        return 0;
+    }
+    
+    OpenXRSwapchain* swapchain = g_vr_renderer.quadSwapchain2;
+    
+    // Acquire swapchain image
+    XrSwapchainImageAcquireInfo acquireInfo{};
+    acquireInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_ACQUIRE_INFO;
+    
+    uint32_t imageIndex = 0;
+    XrResult result = xrAcquireSwapchainImage(swapchain->swapchain, &acquireInfo, &imageIndex);
+    
+    if (result != XR_SUCCESS) {
+        cerr << "Failed to acquire quad swapchain 2 image: " << result << endl;
+        return 0;
+    }
+    
+    g_vr_renderer.quadSwapchainIndex2 = imageIndex;
+    
+    // Wait for swapchain image
+    XrSwapchainImageWaitInfo waitInfo{};
+    waitInfo.type = XR_TYPE_SWAPCHAIN_IMAGE_WAIT_INFO;
+    waitInfo.timeout = XR_INFINITE_DURATION;
+    
+    result = xrWaitSwapchainImage(swapchain->swapchain, &waitInfo);
+    
+    if (result != XR_SUCCESS) {
+        cerr << "Failed to wait for quad swapchain 2 image: " << result << endl;
+        return 0;
+    }
+    
+    g_vr_renderer.quadLayer2Active = true;
+    return 1;
+}
+
+void vr_renderer_set_quad_layer2_pose(float position_x, float position_y, float position_z,
+                                     float orientation_x, float orientation_y, float orientation_z, float orientation_w)
+{
+    g_vr_renderer.quadLayer2.pose.position = {position_x, position_y, position_z};
+    g_vr_renderer.quadLayer2.pose.orientation = {orientation_x, orientation_y, orientation_z, orientation_w};
+}
+
+void vr_renderer_set_quad_layer2_size(float width, float height)
+{
+    g_vr_renderer.quadLayer2.size = {width, height};
+}
+
+VkImage vr_renderer_get_quad_swapchain_image2(void)
+{
+    if (!g_vr_renderer.initialized || !g_vr_renderer.quadLayer2Initialized) {
+        return VK_NULL_HANDLE;
+    }
+    
+    OpenXRSwapchain* swapchain = g_vr_renderer.quadSwapchain2;
+    if (!swapchain || !swapchain->images) {
+        return VK_NULL_HANDLE;
+    }
+    
+    uint32_t imageIndex = g_vr_renderer.quadSwapchainIndex2;
+    if (imageIndex >= swapchain->imageCount) {
+        return VK_NULL_HANDLE;
+    }
+    
+    return swapchain->images[imageIndex];
+}
+
+void vr_renderer_get_quad_viewport2(uint32_t* width, uint32_t* height)
+{
+    if (!g_vr_renderer.initialized || !g_vr_renderer.quadLayer2Initialized) {
+        *width = 0;
+        *height = 0;
+        return;
+    }
+    
+    *width = g_vr_renderer.quadSwapchain2->width;
+    *height = g_vr_renderer.quadSwapchain2->height;
 }
 

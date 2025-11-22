@@ -24,6 +24,10 @@ int vr_copy_framebuffer_to_swapchain(int eye);
 // Returns 1 on success, 0 on failure
 int vr_copy_quad_framebuffer_to_swapchain(void);
 
+// Copy quad 2 framebuffer to quad 2 swapchain
+// Returns 1 on success, 0 on failure
+int vr_copy_quad2_framebuffer_to_swapchain(void);
+
 #ifdef __cplusplus
 }
 #endif
