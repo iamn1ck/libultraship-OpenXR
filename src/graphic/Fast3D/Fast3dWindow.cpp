@@ -406,15 +406,16 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             }
         }
         
-        // Check if any orthographic (2D HUD) content was drawn during eye rendering
+        // Check if any 2D HUD content was drawn during eye rendering
+        // This includes orthographic projections AND texture rectangles (the primary HUD rendering method)
         // If so, re-render to quad layer 2
         static int quad2_log = 0;
         if (quad2_log < 10) {
-            SPDLOG_INFO("Quad2: initialized={}, is_ortho={}", quad2_initialized, g_rsp.is_ortho_projection);
+            SPDLOG_INFO("Quad2: initialized={}, is_ortho={}, has_2d={}", quad2_initialized, g_rsp.is_ortho_projection, g_rsp.has_2d_content);
             quad2_log++;
         }
         
-        if (quad2_initialized && g_rsp.is_ortho_projection) {
+        if (quad2_initialized && g_rsp.has_2d_content) {
             SPDLOG_INFO("Rendering to quad layer 2!");
             if (vr_opengl_begin_quad2()) {
                 // Clear to transparent background

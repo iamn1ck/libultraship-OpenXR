@@ -164,6 +164,7 @@ struct RSP {
     float vr_view_offset[4][4];
     bool vr_matrices_valid;
     bool is_ortho_projection;  // True when using orthographic projection (2D HUD)
+    bool has_2d_content;        // True when 2D HUD content (texture rects, ortho, etc) is drawn
     #endif
 };
 

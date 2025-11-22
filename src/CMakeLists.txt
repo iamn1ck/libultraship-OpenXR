@@ -233,12 +233,6 @@ if (USE_OPENGLES)
     endif()
 endif()
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Android")
-    find_library(ANDROID_LOG_LIBRARY log)
-    target_link_libraries(libultraship PRIVATE ${ANDROID_LOG_LIBRARY})
-endif()
-
-
 target_link_libraries(libultraship PUBLIC prism)
 
 # ===========================================================
@@ -435,3 +429,4 @@ if ("${CMAKE_CXX_COMPILER_ID}" MATCHES "GNU|Clang")
     )
     endif()
 endif()
+

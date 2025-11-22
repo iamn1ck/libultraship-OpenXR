@@ -1199,10 +1199,17 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
         bool was_ortho = g_rsp.is_ortho_projection;
         g_rsp.is_ortho_projection = (fabs(matrix[3][2]) < 0.01f);
         
+        // If we detected orthographic projection, mark that we have 2D content
+        if (g_rsp.is_ortho_projection) {
+            g_rsp.has_2d_content = true;
+        }
+        
         // Debug logging
         static int log_count = 0;
         if (log_count < 20 || was_ortho != g_rsp.is_ortho_projection) {
-            SPDLOG_INFO("Projection Matrix: P[3][2]={}, is_ortho={}", matrix[3][2], g_rsp.is_ortho_projection);
+            SPDLOG_INFO("Projection Matrix: P[3][2]={}, P[3][3]={}, is_ortho={}, vr_active={}, vr_valid={}", 
+                matrix[3][2], matrix[3][3], g_rsp.is_ortho_projection,
+                g_rsp.vr_rendering_active, g_rsp.vr_matrices_valid);
             log_count++;
         }
         
@@ -2363,6 +2370,15 @@ static void gfx_dp_set_fill_color(uint32_t packed_color) {
 }
 
 static void gfx_draw_rectangle(int32_t ulx, int32_t uly, int32_t lrx, int32_t lry) {
+#ifdef OPENXR_ENABLED
+    // Texture rectangles are always 2D screen-space elements (HUD, UI, etc)
+    static int rect_log_count = 0;
+    if (!g_rsp.has_2d_content && rect_log_count < 5) {
+        SPDLOG_INFO("Detected texture rectangle -> marking has_2d_content=true");
+        rect_log_count++;
+    }
+    g_rsp.has_2d_content = true;
+#endif
     uint32_t saved_other_mode_h = g_rdp.other_mode_h;
     uint32_t cycle_type = (g_rdp.other_mode_h & (3U << G_MDSFT_CYCLETYPE));
 
@@ -4203,6 +4219,10 @@ static void gfx_sp_reset() {
     g_rsp.lookat[1].dir[2] = 0;
     calculate_normal_dir(&g_rsp.lookat[0], g_rsp.current_lookat_coeffs[0]);
     calculate_normal_dir(&g_rsp.lookat[1], g_rsp.current_lookat_coeffs[1]);
+#ifdef OPENXR_ENABLED
+    g_rsp.is_ortho_projection = false;
+    g_rsp.has_2d_content = false;
+#endif
 }
 
 void gfx_get_dimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) {
