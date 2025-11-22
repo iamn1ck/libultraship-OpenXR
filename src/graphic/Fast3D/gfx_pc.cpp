@@ -3822,6 +3822,12 @@ bool gfx_set_combine_handler_rdp(F3DGfx** cmd0) {
 
 bool gfx_tex_rect_and_flip_handler_rdp(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    
+    if (gfx_render_3d_only) {
+        return false;
+    }
+
     int8_t opcode = (int8_t)(cmd->words.w0 >> 24);
     int32_t lrx, lry, tile, ulx, uly;
     uint32_t uls, ult, dsdx, dtdy;
@@ -3847,6 +3853,11 @@ bool gfx_tex_rect_and_flip_handler_rdp(F3DGfx** cmd0) {
 
 bool gfx_tex_rect_wide_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_3d_only) {
+        return false;
+    }
+
     int8_t opcode = (int8_t)(cmd->words.w0 >> 24);
     int32_t lrx, lry, tile, ulx, uly;
     uint32_t uls, ult, dsdx, dtdy;
@@ -3870,6 +3881,11 @@ bool gfx_tex_rect_wide_handler_custom(F3DGfx** cmd0) {
 
 bool gfx_image_rect_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_3d_only) {
+        return false;
+    }
+
     int16_t tile, iw, ih;
     int16_t x0, y0, s0, t0;
     int16_t x1, y1, s1, t1;
