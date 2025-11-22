@@ -377,6 +377,15 @@ void vr_opengl_end_quad(void)
     glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl.previousFramebuffer);
 }
 
+void vr_opengl_cancel_quad(void)
+{
+    if (!g_vr_opengl_quad.initialized) {
+        return;
+    }
+    // Just restore previous framebuffer without copying
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl.previousFramebuffer);
+}
+
 unsigned int vr_opengl_get_quad_framebuffer(void)
 {
     return g_vr_opengl_quad.framebuffer;

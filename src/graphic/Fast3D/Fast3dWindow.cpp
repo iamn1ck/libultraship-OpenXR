@@ -344,6 +344,7 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         gfx_current_dimensions = saved_dimensions;
 
         // Render Quad Layer (ImGui)
+        // Render Quad Layer (ImGui)
         static bool quad_initialized = false;
         if (!quad_initialized) {
             // Initialize quad layer (1024x1024 for better UI resolution)
@@ -361,21 +362,29 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         }
         
         if (quad_initialized) {
-            if (vr_renderer_render_quad_layer()) {
-                if (vr_opengl_begin_quad()) {
-                    // Clear to transparent black
-                    glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Transparent background
-                    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-                    
-                    // Set dimensions for ImGui
-                    gfx_current_dimensions.width = 1024;
-                    gfx_current_dimensions.height = 1024;
-                    
-                    // Render ImGui
-                    gui->StartDraw();
-                    gui->EndDraw();
-                    
-                    vr_opengl_end_quad();
+            // Always bind quad FBO to capture ImGui rendering
+            if (vr_opengl_begin_quad()) {
+                // Clear to transparent black
+                glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Transparent background
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                
+                // Set dimensions for ImGui
+                gfx_current_dimensions.width = 1024;
+                gfx_current_dimensions.height = 1024;
+                
+                // Render ImGui
+                gui->StartDraw();
+                gui->EndDraw();
+                
+                // Only submit if visible
+                if (gui->GetMenuOrMenubarVisible()) {
+                    if (vr_renderer_render_quad_layer()) {
+                        vr_opengl_end_quad(); // Copies and unbinds
+                    } else {
+                        vr_opengl_cancel_quad(); // Just unbinds
+                    }
+                } else {
+                    vr_opengl_cancel_quad(); // Just unbinds
                 }
             }
         }

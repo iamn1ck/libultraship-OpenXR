@@ -50,6 +50,7 @@ int vr_opengl_begin_quad(void);
 // End rendering to quad layer
 // Unbinds the framebuffer
 void vr_opengl_end_quad(void);
+void vr_opengl_cancel_quad(void); // Unbinds without copying
 
 // Get the quad framebuffer ID
 unsigned int vr_opengl_get_quad_framebuffer(void);
