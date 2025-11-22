@@ -246,6 +246,8 @@ extern struct XYWidthHeight
 extern uint32_t gfx_msaa_level;
 }
 
+extern bool gfx_render_2d_only;
+
 void gfx_init(struct GfxWindowManagerAPI* wapi, struct GfxRenderingAPI* rapi, const char* game_name,
               bool start_in_fullscreen, uint32_t width = SCREEN_WIDTH, uint32_t height = SCREEN_HEIGHT,
               uint32_t posX = 100, uint32_t posY = 100);

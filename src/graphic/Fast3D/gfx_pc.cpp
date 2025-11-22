@@ -111,6 +111,8 @@ struct XYWidthHeight gfx_current_game_window_viewport;
 struct XYWidthHeight gfx_native_dimensions;
 struct XYWidthHeight gfx_prev_native_dimensions;
 
+bool gfx_render_2d_only = false;
+
 static bool game_renders_to_framebuffer;
 static int game_framebuffer;
 static int game_framebuffer_msaa_resolved;
@@ -3318,6 +3320,10 @@ bool gfx_tri1_otr_handler_f3dex2(F3DGfx** cmd0) {
 bool gfx_tri1_handler_f3dex2(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
 
     return false;
@@ -3326,6 +3332,10 @@ bool gfx_tri1_handler_f3dex2(F3DGfx** cmd0) {
 bool gfx_tri1_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
 
     return false;
@@ -3333,6 +3343,10 @@ bool gfx_tri1_handler_f3dex(F3DGfx** cmd0) {
 
 bool gfx_tri1_handler_f3d(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_sp_tri1(C1(16, 8) / 10, C1(8, 8) / 10, C1(0, 8) / 10, false);
 
@@ -3343,6 +3357,10 @@ bool gfx_tri1_handler_f3d(F3DGfx** cmd0) {
 bool gfx_tri2_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C0(17, 7), C0(9, 7), C0(1, 7), false);
     gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
     return false;
@@ -3351,6 +3369,10 @@ bool gfx_tri2_handler_f3dex(F3DGfx** cmd0) {
 bool gfx_quad_handler_f3dex2(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
     gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
     return false;
@@ -3358,6 +3380,11 @@ bool gfx_quad_handler_f3dex2(F3DGfx** cmd0) {
 
 bool gfx_quad_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
     gfx_sp_tri1(C1(16, 8) / 2, C1(0, 8) / 2, C1(24, 8) / 2, false);
     return false;

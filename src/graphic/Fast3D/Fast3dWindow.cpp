@@ -452,8 +452,14 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
                 // IMPORTANT: Enable VR rendering mode to prevent gfx_run from unbinding our FBO
                 gfx_opengl_set_vr_rendering_mode(true);
                 
+                // Enable 2D-only filtering to skip 3D geometry
+                gfx_render_2d_only = true;
+                
                 // Re-render the commands to capture orthographic content
                 gfx_run(commands, mtxReplacements);
+                
+                // Disable 2D-only filtering
+                gfx_render_2d_only = false;
                 
                 // Disable VR rendering mode again
                 gfx_opengl_set_vr_rendering_mode(false);
