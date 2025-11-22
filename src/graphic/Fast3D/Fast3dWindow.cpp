@@ -323,7 +323,9 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             GLuint expected_fbo = vr_opengl_get_framebuffer(eye);
 
             // Render the game to the VR framebuffer
+            gfx_render_3d_only = true;
             gfx_run(commands, mtxReplacements);
+            gfx_render_3d_only = false;
             
             // Check if framebuffer is still bound after gfx_run
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
@@ -455,6 +457,7 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
                 
                 // Enable 2D-only filtering to skip 3D geometry
                 gfx_render_2d_only = true;
+                gfx_render_3d_only = false;
                 
                 // Re-render the commands to capture orthographic content
                 gfx_run(commands, mtxReplacements);

@@ -112,6 +112,7 @@ struct XYWidthHeight gfx_native_dimensions;
 struct XYWidthHeight gfx_prev_native_dimensions;
 
 bool gfx_render_2d_only = false;
+bool gfx_render_3d_only = false;
 
 static bool game_renders_to_framebuffer;
 static int game_framebuffer;
@@ -3323,6 +3324,9 @@ bool gfx_tri1_handler_f3dex2(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
 
@@ -3335,6 +3339,9 @@ bool gfx_tri1_handler_f3dex(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
 
@@ -3345,6 +3352,9 @@ bool gfx_tri1_handler_f3d(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
         return false;
     }
 
@@ -3360,6 +3370,9 @@ bool gfx_tri2_handler_f3dex(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_sp_tri1(C0(17, 7), C0(9, 7), C0(1, 7), false);
     gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
@@ -3372,6 +3385,9 @@ bool gfx_quad_handler_f3dex2(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
     gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
@@ -3382,6 +3398,9 @@ bool gfx_quad_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
         return false;
     }
 
@@ -3878,6 +3897,9 @@ bool gfx_fill_rect_handler_rdp(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_dp_fill_rectangle(C1(12, 12), C1(0, 12), C0(12, 12), C0(0, 12));
     return false;
@@ -3887,6 +3909,9 @@ bool gfx_fill_wide_rect_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
         return false;
     }
 
@@ -3936,6 +3961,9 @@ bool gfx_bg_copy_handler_s2dex(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     if (!markerOn) {
         gfx_s2dex_bg_copy((F3DuObjBg*)cmd->words.w1); // not seg_addr here it seems
@@ -3949,6 +3977,9 @@ bool gfx_bg_1cyc_handler_s2dex(F3DGfx** cmd0) {
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
         return false;
     }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_s2dex_bg_1cyc((F3DuObjBg*)cmd->words.w1);
     return false;
@@ -3958,6 +3989,9 @@ bool gfx_obj_rectangle_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
     if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
         return false;
     }
 
