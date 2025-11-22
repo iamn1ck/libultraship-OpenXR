@@ -435,6 +435,7 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
                 }
                 
                 // Clear to transparent background
+                glDisable(GL_SCISSOR_TEST);
                 glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Fully transparent
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 
