@@ -3875,12 +3875,21 @@ bool gfx_image_rect_handler_custom(F3DGfx** cmd0) {
 bool gfx_fill_rect_handler_rdp(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_dp_fill_rectangle(C1(12, 12), C1(0, 12), C0(12, 12), C0(0, 12));
     return false;
 }
 
 bool gfx_fill_wide_rect_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     int32_t lrx, lry, ulx, uly;
 
     lrx = (int32_t)(C0(0, 24) << 8) >> 8;
@@ -3924,6 +3933,10 @@ bool gfx_rdp_set_other_mode_rdp(F3DGfx** cmd0) {
 bool gfx_bg_copy_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     if (!markerOn) {
         gfx_s2dex_bg_copy((F3DuObjBg*)cmd->words.w1); // not seg_addr here it seems
     }
@@ -3933,12 +3946,20 @@ bool gfx_bg_copy_handler_s2dex(F3DGfx** cmd0) {
 bool gfx_bg_1cyc_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_s2dex_bg_1cyc((F3DuObjBg*)cmd->words.w1);
     return false;
 }
 
 bool gfx_obj_rectangle_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     if (!markerOn) {
         gfx_s2dex_rect_copy((F3DuObjSprite*)cmd->words.w1); // not seg_addr here it seems
