@@ -328,9 +328,8 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             // Check if framebuffer is still bound after gfx_run
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
             
-            gui->StartDraw();
-
-            gui->EndDraw();
+            // gui->StartDraw(); // Moved to Quad Layer
+            // gui->EndDraw();   // Moved to Quad Layer
 
             
             // Disable VR rendering mode
@@ -344,20 +343,20 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         // Restore window dimensions
         gfx_current_dimensions = saved_dimensions;
 
-        // Render Quad Layer (Hello Triangle)
+        // Render Quad Layer (ImGui)
         static bool quad_initialized = false;
         if (!quad_initialized) {
-            // Initialize quad layer (512x512)
-            if (vr_renderer_init_quad_layer(512, 512)) {
+            // Initialize quad layer (1024x1024 for better UI resolution)
+            if (vr_renderer_init_quad_layer(1024, 1024)) {
                 // Set pose (1.5m in front, slightly up)
                 vr_renderer_set_quad_layer_pose(0.0f, 0.0f, -1.5f, 0.0f, 0.0f, 0.0f, 1.0f);
-                vr_renderer_set_quad_layer_size(1.0f, 1.0f);
+                vr_renderer_set_quad_layer_size(1.5f, 1.5f); // Larger size for UI
                 
                 // Initialize OpenGL for quad
-                vr_opengl_init_quad(512, 512);
+                vr_opengl_init_quad(1024, 1024);
                 
                 quad_initialized = true;
-                printf("Quad layer initialized\n");
+                printf("Quad layer initialized for ImGui\n");
             }
         }
         
@@ -365,31 +364,24 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             if (vr_renderer_render_quad_layer()) {
                 if (vr_opengl_begin_quad()) {
                     // Clear to transparent black
-                    glClearColor(0.0f, 0.0f, 0.0f, 1.0f); // Opaque black background for visibility
+                    glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Transparent background
                     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                     
-                    // Draw Hello Triangle
-                    // Simple immediate mode style for GLES2/3 compatibility
-                    // Note: Modern GL requires VAOs/VBOs, but we'll try a simple approach compatible with the context
+                    // Set dimensions for ImGui
+                    gfx_current_dimensions.width = 1024;
+                    gfx_current_dimensions.height = 1024;
                     
-                    // Use a simple shader program if needed, or just clear color for now to prove it works.
-                    // Since we don't have a shader ready, let's just clear to a distinct color (Green)
-                    // to prove the quad layer is rendering.
-                    // If we want a triangle, we need to set up a pipeline.
-                    // Given the constraints, a solid color quad is a good first step.
-                    // Let's try to draw a triangle using basic GL commands if available, or just a scissor rect.
-                    
-                    // Let's do a Scissor test to draw a smaller box inside
-                    glEnable(GL_SCISSOR_TEST);
-                    glScissor(128, 128, 256, 256);
-                    glClearColor(0.0f, 1.0f, 0.0f, 1.0f); // Green square
-                    glClear(GL_COLOR_BUFFER_BIT);
-                    glDisable(GL_SCISSOR_TEST);
+                    // Render ImGui
+                    gui->StartDraw();
+                    gui->EndDraw();
                     
                     vr_opengl_end_quad();
                 }
             }
         }
+
+        // Restore dimensions again just in case
+        gfx_current_dimensions = saved_dimensions;
 
         vr_renderer_end_frame();
 
