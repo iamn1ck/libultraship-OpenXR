@@ -347,14 +347,14 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         // Render Quad Layer (ImGui)
         static bool quad_initialized = false;
         if (!quad_initialized) {
-            // Initialize quad layer (1024x1024 for better UI resolution)
-            if (vr_renderer_init_quad_layer(1024, 1024)) {
+            // Initialize quad layer (3840x2160 for better UI resolution)
+            if (vr_renderer_init_quad_layer(3840, 2160)) {
                 // Set pose (1.5m in front, slightly up)
-                vr_renderer_set_quad_layer_pose(0.0f, 0.0f, -1.5f, 0.0f, 0.0f, 0.0f, 1.0f);
-                vr_renderer_set_quad_layer_size(1.5f, 1.5f); // Larger size for UI
+                vr_renderer_set_quad_layer_pose(0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+                vr_renderer_set_quad_layer_size(1.6f, 0.9f); // 16:9 aspect ratio
                 
                 // Initialize OpenGL for quad
-                vr_opengl_init_quad(1024, 1024);
+                vr_opengl_init_quad(3840, 2160);
                 
                 quad_initialized = true;
                 printf("Quad layer initialized for ImGui\n");
@@ -369,8 +369,8 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 
                 // Set dimensions for ImGui
-                gfx_current_dimensions.width = 1024;
-                gfx_current_dimensions.height = 1024;
+                gfx_current_dimensions.width = 3840;
+                gfx_current_dimensions.height = 2160;
                 
                 // Render ImGui
                 gui->StartDraw();

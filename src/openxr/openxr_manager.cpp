@@ -30,6 +30,7 @@ static struct {
     int32_t queueFamilyIndex;
     XrSession xrSession;
     XrSpace xrSpace;
+    XrSpace xrViewSpace;
     XrSessionState sessionState;
     XrFrameState frameState;
     
@@ -48,6 +49,7 @@ static struct {
     VK_NULL_HANDLE,
     VK_NULL_HANDLE,
     -1,
+    XR_NULL_HANDLE,
     XR_NULL_HANDLE,
     XR_NULL_HANDLE,
     XR_SESSION_STATE_UNKNOWN,
@@ -188,6 +190,13 @@ int openxr_init(void)
         return 0;
     }
 
+    // Create view reference space (for HUD)
+    g_openxr_state.xrViewSpace = createXRViewSpace(g_openxr_state.xrSession);
+    if (g_openxr_state.xrViewSpace == XR_NULL_HANDLE) {
+        SPDLOG_WARN("Failed to create OpenXR view reference space. HUD will not work.");
+        // Non-fatal, just warn
+    }
+
     g_openxr_state.initialized = true;
         SPDLOG_WARN("OpenXR context initialized successfully!");
     
@@ -218,6 +227,7 @@ void openxr_shutdown(void)
     vr_renderer_shutdown();
 
     // Destroy in reverse order of creation
+    destroyXRSpace(g_openxr_state.xrViewSpace);
     destroyXRSpace(g_openxr_state.xrSpace);
     destroyXRSession(g_openxr_state.xrSession);
     destroyVulkanDevice(g_openxr_state.vkDevice);
@@ -239,6 +249,7 @@ void openxr_shutdown(void)
     g_openxr_state.queueFamilyIndex = -1;
     g_openxr_state.xrSession = XR_NULL_HANDLE;
     g_openxr_state.xrSpace = XR_NULL_HANDLE;
+    g_openxr_state.xrViewSpace = XR_NULL_HANDLE;
 
     std::cout << "OpenXR context shutdown complete" << std::endl;
 }
@@ -452,6 +463,11 @@ XrSession openxr_get_session(void)
 XrSpace openxr_get_space(void)
 {
     return g_openxr_state.xrSpace;
+}
+
+XrSpace openxr_get_view_space(void)
+{
+    return g_openxr_state.xrViewSpace;
 }
 
 XrSystemId openxr_get_system_id(void)

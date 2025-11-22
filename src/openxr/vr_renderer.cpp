@@ -301,7 +301,7 @@ int vr_renderer_end_frame(void)
     // Quad layer
     XrCompositionLayerQuad quadLayer{};
     quadLayer.type = XR_TYPE_COMPOSITION_LAYER_QUAD;
-    quadLayer.space = g_vr_renderer.xrSpace;
+    quadLayer.space = openxr_get_view_space(); // Use View space (head-locked)
     quadLayer.subImage.swapchain = g_vr_renderer.quadSwapchain ? g_vr_renderer.quadSwapchain->swapchain : XR_NULL_HANDLE;
     quadLayer.subImage.imageRect.offset = {0, 0};
     if (g_vr_renderer.quadSwapchain) {
