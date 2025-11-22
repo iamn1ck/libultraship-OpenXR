@@ -368,6 +368,7 @@ int vr_renderer_end_frame(void)
     quadLayer2.pose = g_vr_renderer.quadLayer2.pose;
     quadLayer2.size = g_vr_renderer.quadLayer2.size;
     quadLayer2.eyeVisibility = XR_EYE_VISIBILITY_BOTH;
+    quadLayer2.layerFlags = XR_COMPOSITION_LAYER_BLEND_TEXTURE_SOURCE_ALPHA_BIT;
 
     if (g_vr_renderer.quadLayer2Active) {
         layers.push_back((const XrCompositionLayerBaseHeader*)&quadLayer2);

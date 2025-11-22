@@ -522,95 +522,33 @@ unsigned int vr_opengl_get_quad_texture2(void)
 
 void vr_opengl_draw_hello_triangle(void)
 {
-    // Simple triangle vertices (x, y, z)
-    GLfloat vertices[] = {
-         0.0f,  0.5f, 0.0f, // Top
-        -0.5f, -0.5f, 0.0f, // Bottom Left
-         0.5f, -0.5f, 0.0f  // Bottom Right
-    };
+    // Just draw a simple colored rectangle using glClear and scissor test
+    // This is the most basic rendering possible - no shaders needed
     
-    // Simple colors (r, g, b, a)
-    GLfloat colors[] = {
-        1.0f, 0.0f, 0.0f, 0.5f, // Red
-        0.0f, 1.0f, 0.0f, 0.5f, // Green
-        0.0f, 0.0f, 1.0f, 0.5f  // Blue
-    };
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    int width = viewport[2];
+    int height = viewport[3];
     
-    // Save GL state
-    GLboolean depthTest = glIsEnabled(GL_DEPTH_TEST);
-    GLboolean culling = glIsEnabled(GL_CULL_FACE);
+    // Enable scissor test to draw different colored sections
+    glEnable(GL_SCISSOR_TEST);
     
-    glDisable(GL_DEPTH_TEST);
-    glDisable(GL_CULL_FACE);
+    // Top half - red with some transparency
+    glScissor(0, height/2, width, height/2);
+    glClearColor(1.0f, 0.0f, 0.0f, 0.8f);
+    glClear(GL_COLOR_BUFFER_BIT);
     
-    // Use a simple shader program or fixed function pipeline if available
-    // Since we are in GLES2/3 context, we should probably use a simple shader
-    // But for now, let's assume there's a currently bound shader or we can use basic drawing
-    // Actually, without a shader, nothing will draw in modern GL.
-    // However, this codebase seems to use GLES2/3.
+    // Bottom half - blue with some transparency
+    glScissor(0, 0, width, height/2);
+    glClearColor(0.0f, 0.0f, 1.0f, 0.8f);
+    glClear(GL_COLOR_BUFFER_BIT);
     
-    // Let's try to use the fixed function pipeline if we are in compatibility profile,
-    // but GLES2 doesn't have it. We need a shader.
-    // For simplicity, I'll just clear the screen to a distinct color for now to prove it works.
-    // If we need a triangle, we need to compile a shader.
+    // Middle stripe - green
+    glScissor(0, height/2 - 50, width, 100);
+    glClearColor(0.0f, 1.0f, 0.0f, 0.9f);
+    glClear(GL_COLOR_BUFFER_BIT);
     
-    // Wait, let's check if there is a simple shader available or if we can just clear.
-    // The user specifically asked for a "hello triangle".
-    
-    // Let's create a minimal shader program for the triangle.
-    static GLuint program = 0;
-    if (program == 0) {
-        const char* vShaderStr =
-            "attribute vec4 vPosition;    \n"
-            "attribute vec4 vColor;       \n"
-            "varying vec4 fColor;         \n"
-            "void main()                  \n"
-            "{                            \n"
-            "   gl_Position = vPosition;  \n"
-            "   fColor = vColor;          \n"
-            "}                            \n";
-            
-        const char* fShaderStr =
-            "precision mediump float;     \n"
-            "varying vec4 fColor;         \n"
-            "void main()                  \n"
-            "{                            \n"
-            "  gl_FragColor = fColor;     \n"
-            "}                            \n";
-            
-        GLuint vertexShader = glCreateShader(GL_VERTEX_SHADER);
-        glShaderSource(vertexShader, 1, &vShaderStr, NULL);
-        glCompileShader(vertexShader);
-        
-        GLuint fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
-        glShaderSource(fragmentShader, 1, &fShaderStr, NULL);
-        glCompileShader(fragmentShader);
-        
-        program = glCreateProgram();
-        glAttachShader(program, vertexShader);
-        glAttachShader(program, fragmentShader);
-        glLinkProgram(program);
-    }
-    
-    glUseProgram(program);
-    
-    GLint positionLoc = glGetAttribLocation(program, "vPosition");
-    GLint colorLoc = glGetAttribLocation(program, "vColor");
-    
-    glVertexAttribPointer(positionLoc, 3, GL_FLOAT, GL_FALSE, 0, vertices);
-    glEnableVertexAttribArray(positionLoc);
-    
-    glVertexAttribPointer(colorLoc, 4, GL_FLOAT, GL_FALSE, 0, colors);
-    glEnableVertexAttribArray(colorLoc);
-    
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-    
-    glDisableVertexAttribArray(positionLoc);
-    glDisableVertexAttribArray(colorLoc);
-    
-    // Restore GL state
-    if (depthTest) glEnable(GL_DEPTH_TEST);
-    if (culling) glEnable(GL_CULL_FACE);
+    glDisable(GL_SCISSOR_TEST);
 }
 
 #endif // RAPI_GL
