@@ -417,9 +417,25 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         
         if (quad2_initialized && g_rsp.has_2d_content) {
             SPDLOG_INFO("Rendering to quad layer 2!");
+            
+            // Clear any previous GL errors
+            while (glGetError() != GL_NO_ERROR);
+            
             if (vr_opengl_begin_quad2()) {
+                // Check for GL errors after binding
+                GLenum err = glGetError();
+                if (err != GL_NO_ERROR) {
+                    SPDLOG_ERROR("GL error after vr_opengl_begin_quad2: {}", err);
+                }
+                
+                // Verify framebuffer is complete
+                GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                if (status != GL_FRAMEBUFFER_COMPLETE) {
+                    SPDLOG_ERROR("Quad2 framebuffer not complete: {}", status);
+                }
+                
                 // Clear to transparent background
-                glClearColor(0.0f, 0.0f, 0.0f, 0.5f);
+                glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Fully transparent
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 
                 // Set dimensions for 2D HUD
@@ -429,18 +445,40 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
                 // Disable VR matrix overrides for orthographic rendering
                 g_rsp.vr_rendering_active = 0;
                 
+                // Reset the 2D content flag before re-render to track what gets drawn
+                g_rsp.has_2d_content = false;
+                SPDLOG_INFO("Re-rendering for quad2 (has_2d_content reset to false before gfx_run)");
+                
+                // IMPORTANT: Enable VR rendering mode to prevent gfx_run from unbinding our FBO
+                gfx_opengl_set_vr_rendering_mode(true);
+                
                 // Re-render the commands to capture orthographic content
                 gfx_run(commands, mtxReplacements);
                 
-                // Re-enable VR mode
+                // Disable VR rendering mode again
+                gfx_opengl_set_vr_rendering_mode(false);
+                
+                SPDLOG_INFO("After quad2 gfx_run: has_2d_content={}", g_rsp.has_2d_content);
+                
+                // Check for GL errors after rendering
+                err = glGetError();
+                if (err != GL_NO_ERROR) {
+                    SPDLOG_ERROR("GL error after quad2 gfx_run: {}", err);
+                }
+                
+                // Re-enable VR mode for the rest of the frame logic if needed (though we are near end)
                 g_rsp.vr_rendering_active = 1;
                 
                 // Submit the quad layer
                 if (vr_renderer_render_quad_layer2()) {
+                    SPDLOG_INFO("Successfully called vr_renderer_render_quad_layer2");
                     vr_opengl_end_quad2();
                 } else {
+                    SPDLOG_WARN("vr_renderer_render_quad_layer2 returned false");
                     vr_opengl_cancel_quad2();
                 }
+            } else {
+                SPDLOG_ERROR("vr_opengl_begin_quad2 failed");
             }
         }
 
