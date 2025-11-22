@@ -4,6 +4,9 @@
 #include <spdlog/async.h>
 #include <spdlog/sinks/rotating_file_sink.h>
 #include <spdlog/sinks/stdout_color_sinks.h>
+#ifdef __ANDROID__
+#include <spdlog/sinks/android_sink.h>
+#endif
 #include "install_config.h"
 #include "graphic/Fast3D/debug/GfxDebugger.h"
 
@@ -97,7 +100,11 @@ bool Context::InitLogging() {
         spdlog::init_thread_pool(8192, 1);
         std::vector<spdlog::sink_ptr> sinks;
 
-#if (!defined(_WIN32)) || defined(_DEBUG)
+#ifdef __ANDROID__
+        // Use Android logcat sink for Android
+        auto androidSink = std::make_shared<spdlog::sinks::android_sink_mt>("SOH");
+        sinks.push_back(androidSink);
+#elif (!defined(_WIN32)) || defined(_DEBUG)
 #if defined(_DEBUG) && defined(_WIN32)
         // LLVM on Windows allocs a hidden console in its entrypoint function.
         // We free that console here to create our own.

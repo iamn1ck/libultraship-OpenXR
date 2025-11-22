@@ -1194,6 +1194,18 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
         //     gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
         // }
 #ifdef OPENXR_ENABLED
+        // Detect orthographic vs perspective projection
+        // Orthographic: P[3][2] ≈ 0, Perspective: P[3][2] ≈ -1
+        bool was_ortho = g_rsp.is_ortho_projection;
+        g_rsp.is_ortho_projection = (fabs(matrix[3][2]) < 0.01f);
+        
+        // Debug logging
+        static int log_count = 0;
+        if (log_count < 20 || was_ortho != g_rsp.is_ortho_projection) {
+            SPDLOG_INFO("Projection Matrix: P[3][2]={}, is_ortho={}", matrix[3][2], g_rsp.is_ortho_projection);
+            log_count++;
+        }
+        
         // Override projection matrix with VR-specific projection when in VR mode
         if (g_rsp.vr_rendering_active && g_rsp.vr_matrices_valid) {
 

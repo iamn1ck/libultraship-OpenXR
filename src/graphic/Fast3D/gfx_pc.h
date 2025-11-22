@@ -163,6 +163,7 @@ struct RSP {
     float vr_projection_override[4][4];
     float vr_view_offset[4][4];
     bool vr_matrices_valid;
+    bool is_ortho_projection;  // True when using orthographic projection (2D HUD)
     #endif
 };
 

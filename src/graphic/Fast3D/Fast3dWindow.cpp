@@ -389,33 +389,52 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             }
         }
 
-        // Render Quad Layer 2 (Hello Triangle)
+        // Render Quad Layer 2 (2D HUD / Orthographic content)
         static bool quad2_initialized = false;
         if (!quad2_initialized) {
-            // Initialize quad layer 2 (512x512 for the triangle)
+            // Initialize quad layer 2 with same resolution as quad layer 1
             if (vr_renderer_init_quad_layer2(3840, 2160)) {
-                // Set pose (slightly to the right of the first quad)
+                // Set pose - same position as quad layer 1 (1m in front)
                 vr_renderer_set_quad_layer2_pose(0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
-                vr_renderer_set_quad_layer2_size(0.5f, 0.5f); // 0.5m x 0.5m
+                vr_renderer_set_quad_layer2_size(1.6f, 0.9f); // Same 16:9 aspect ratio
                 
                 // Initialize OpenGL for quad 2
                 vr_opengl_init_quad2(3840, 2160);
                 
                 quad2_initialized = true;
-                printf("Quad layer 2 initialized for hello triangle\n");
+                printf("Quad layer 2 initialized for 2D HUD rendering\n");
             }
         }
         
-        if (quad2_initialized) {
+        // Check if any orthographic (2D HUD) content was drawn during eye rendering
+        // If so, re-render to quad layer 2
+        static int quad2_log = 0;
+        if (quad2_log < 10) {
+            SPDLOG_INFO("Quad2: initialized={}, is_ortho={}", quad2_initialized, g_rsp.is_ortho_projection);
+            quad2_log++;
+        }
+        
+        if (quad2_initialized && g_rsp.is_ortho_projection) {
+            SPDLOG_INFO("Rendering to quad layer 2!");
             if (vr_opengl_begin_quad2()) {
-                // Clear to black
+                // Clear to transparent background
                 glClearColor(0.0f, 0.0f, 0.0f, 0.5f);
                 glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
                 
-                // Draw hello triangle
-                vr_opengl_draw_hello_triangle();
+                // Set dimensions for 2D HUD
+                gfx_current_dimensions.width = 3840;
+                gfx_current_dimensions.height = 2160;
                 
-                // Always submit the triangle quad
+                // Disable VR matrix overrides for orthographic rendering
+                g_rsp.vr_rendering_active = 0;
+                
+                // Re-render the commands to capture orthographic content
+                gfx_run(commands, mtxReplacements);
+                
+                // Re-enable VR mode
+                g_rsp.vr_rendering_active = 1;
+                
+                // Submit the quad layer
                 if (vr_renderer_render_quad_layer2()) {
                     vr_opengl_end_quad2();
                 } else {
