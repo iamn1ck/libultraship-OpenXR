@@ -67,7 +67,12 @@ void vr_renderer_set_quad_layer_pose(float position_x, float position_y, float p
 
 // Set quad layer size
 // width, height in meters
+// Set quad layer size
+// width, height in meters
 void vr_renderer_set_quad_layer_size(float width, float height);
+
+// Get quad layer viewport dimensions
+void vr_renderer_get_quad_viewport(uint32_t* width, uint32_t* height);
 
 #ifdef __cplusplus
 }

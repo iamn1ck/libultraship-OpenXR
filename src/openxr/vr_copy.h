@@ -16,14 +16,16 @@ void vr_copy_shutdown(void);
 // Check if VR copy is initialized
 int vr_copy_is_initialized(void);
 
-// Copy rendered framebuffer to Vulkan swapchain image
-// eye: 0 for left, 1 for right
+// Copy framebuffer to swapchain for an eye
 // Returns 1 on success, 0 on failure
 int vr_copy_framebuffer_to_swapchain(int eye);
+
+// Copy quad framebuffer to quad swapchain
+// Returns 1 on success, 0 on failure
+int vr_copy_quad_framebuffer_to_swapchain(void);
 
 #ifdef __cplusplus
 }
 #endif
 
 #endif // VR_COPY_H
-

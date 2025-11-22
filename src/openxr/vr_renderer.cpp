@@ -619,3 +619,15 @@ VkImage vr_renderer_get_quad_swapchain_image(void)
     return swapchain->images[imageIndex];
 }
 
+void vr_renderer_get_quad_viewport(uint32_t* width, uint32_t* height)
+{
+    if (!g_vr_renderer.initialized || !g_vr_renderer.quadLayerInitialized) {
+        *width = 0;
+        *height = 0;
+        return;
+    }
+    
+    *width = g_vr_renderer.quadSwapchain->width;
+    *height = g_vr_renderer.quadSwapchain->height;
+}
+

@@ -37,6 +37,26 @@ unsigned int vr_opengl_get_texture(int eye);
 // Get the viewport dimensions for an eye
 void vr_opengl_get_viewport(int eye, uint32_t* width, uint32_t* height);
 
+// Initialize VR OpenGL for quad layer
+// Creates framebuffer and texture for quad rendering
+// Returns 1 on success, 0 on failure
+int vr_opengl_init_quad(uint32_t width, uint32_t height);
+
+// Begin rendering to quad layer
+// Binds the quad framebuffer
+// Returns 1 on success, 0 on failure
+int vr_opengl_begin_quad(void);
+
+// End rendering to quad layer
+// Unbinds the framebuffer
+void vr_opengl_end_quad(void);
+
+// Get the quad framebuffer ID
+unsigned int vr_opengl_get_quad_framebuffer(void);
+
+// Get the quad texture ID
+unsigned int vr_opengl_get_quad_texture(void);
+
 // #ifdef __cplusplus
 // }
 // #endif
