@@ -444,6 +444,10 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
                 // Set dimensions for 2D HUD
                 gfx_current_dimensions.width = 3840;
                 gfx_current_dimensions.height = 2160;
+
+                // this needs to be set in otrglobals to match the quad aspect ratio
+                gfx_current_dimensions.aspect_ratio = static_cast<float>(3840) / (float)2160;
+
                 
                 // Disable VR matrix overrides for orthographic rendering
                 g_rsp.vr_rendering_active = 0;
