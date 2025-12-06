@@ -4,6 +4,7 @@
 #include "window/gui/IconsFontAwesome4.h"
 #include "public/bridge/consolevariablebridge.h"
 #include "Context.h"
+#include "openxr/openxr_input.h"
 
 namespace Ship {
 SDLButtonToButtonMapping::SDLButtonToButtonMapping(uint8_t portIndex, CONTROLLERBUTTONS_T bitmask,
@@ -14,6 +15,11 @@ SDLButtonToButtonMapping::SDLButtonToButtonMapping(uint8_t portIndex, CONTROLLER
 
 void SDLButtonToButtonMapping::UpdatePad(CONTROLLERBUTTONS_T& padButtons) {
     if (Context::GetInstance()->GetControlDeck()->GamepadGameInputBlocked()) {
+        return;
+    }
+
+    if (openxr_get_button(mControllerButton)) {
+        padButtons |= mBitmask;
         return;
     }
 

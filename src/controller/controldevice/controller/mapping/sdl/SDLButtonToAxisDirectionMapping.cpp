@@ -4,6 +4,7 @@
 #include "window/gui/IconsFontAwesome4.h"
 #include "public/bridge/consolevariablebridge.h"
 #include "Context.h"
+#include "openxr/openxr_input.h"
 
 #define MAX_SDL_RANGE (float)INT16_MAX
 
@@ -18,6 +19,10 @@ SDLButtonToAxisDirectionMapping::SDLButtonToAxisDirectionMapping(uint8_t portInd
 float SDLButtonToAxisDirectionMapping::GetNormalizedAxisDirectionValue() {
     if (Context::GetInstance()->GetControlDeck()->GamepadGameInputBlocked()) {
         return 0.0f;
+    }
+
+    if (openxr_get_button(mControllerButton)) {
+        return MAX_AXIS_RANGE;
     }
 
     for (const auto& [instanceId, gamepad] :
