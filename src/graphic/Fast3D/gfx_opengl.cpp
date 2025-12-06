@@ -48,6 +48,7 @@
 #include "Context.h"
 #include <resource/factory/ShaderFactory.h>
 #include <public/bridge/consolevariablebridge.h>
+#include <spdlog/spdlog.h>
 
 using namespace std;
 
@@ -91,6 +92,9 @@ static int8_t last_depth_test;
 static int8_t last_depth_mask;
 static int8_t last_zmode_decal;
 static bool srgb_mode = false;
+
+// VR mode: when true, skip automatic framebuffer binding
+static bool vr_rendering_mode = false;
 
 GLint max_msaa_level = 1;
 GLuint pixel_depth_rb, pixel_depth_fb;
@@ -801,7 +805,10 @@ static void gfx_opengl_update_framebuffer_parameters(int fb_id, uint32_t width, 
     height = max(height, 1U);
     msaa_level = min(msaa_level, (uint32_t)max_msaa_level);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
+    // Skip framebuffer binding in VR mode (VR code manages framebuffer directly)
+    if (!vr_rendering_mode) {
+        glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
+    }
 
     if (fb_id != 0) {
         if (fb.width != width || fb.height != height || fb.msaa_level != msaa_level) {
@@ -844,11 +851,34 @@ static void gfx_opengl_update_framebuffer_parameters(int fb_id, uint32_t width, 
 }
 
 void gfx_opengl_start_draw_to_framebuffer(int fb_id, float noise_scale) {
+    // Skip framebuffer binding if in VR rendering mode
+    // (VR code will manage framebuffer binding directly)
+    if (vr_rendering_mode) {
+        static int log_vr_skip = 0;
+        if (log_vr_skip < 10) {
+            SPDLOG_INFO("VR MODE: Skipping framebuffer bind to {}", fb_id);
+            log_vr_skip++;
+        }
+        if (noise_scale != 0.0f) {
+            current_noise_scale = 1.0f / noise_scale;
+        }
+        return;
+    }
+    
     Framebuffer& fb = framebuffers[fb_id];
 
     if (noise_scale != 0.0f) {
         current_noise_scale = 1.0f / noise_scale;
     }
+    
+    static int log_normal = 0;
+    if (log_normal < 10) {
+        GLint current_fbo = 0;
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
+        SPDLOG_INFO("NORMAL MODE: Binding framebuffer from {} to {} (FBO {})", current_fbo, fb_id, fb.fbo);
+        log_normal++;
+    }
+    
     glBindFramebuffer(GL_FRAMEBUFFER, fb.fbo);
     current_framebuffer = fb_id;
 }
@@ -873,7 +903,11 @@ void gfx_opengl_resolve_msaa_color_buffer(int fb_id_target, int fb_id_source) {
 
     glBlitFramebuffer(0, 0, fb_src.width, fb_src.height, 0, 0, fb_dst.width, fb_dst.height, GL_COLOR_BUFFER_BIT,
                       GL_NEAREST);
-    glBindFramebuffer(GL_FRAMEBUFFER, current_framebuffer);
+    
+    // Skip framebuffer restore in VR mode
+    if (!vr_rendering_mode) {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[current_framebuffer].fbo);
+    }
 
     glEnable(GL_SCISSOR_TEST);
 }
@@ -947,7 +981,10 @@ void gfx_opengl_copy_framebuffer(int fb_dst_id, int fb_src_id, int srcX0, int sr
 
     glBlitFramebuffer(srcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, GL_COLOR_BUFFER_BIT, GL_NEAREST);
 
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[current_framebuffer].fbo);
+    // Skip framebuffer restore in VR mode
+    if (!vr_rendering_mode) {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[current_framebuffer].fbo);
+    }
 
     glReadBuffer(GL_BACK);
 
@@ -961,7 +998,11 @@ void gfx_opengl_read_framebuffer_to_cpu(int fb_id, uint32_t width, uint32_t heig
 
     glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[fb_id].fbo);
     glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_SHORT_5_5_5_1, (void*)rgba16_buf);
-    glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[current_framebuffer].fbo);
+    
+    // Skip framebuffer restore in VR mode
+    if (!vr_rendering_mode) {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[current_framebuffer].fbo);
+    }
 }
 
 static std::unordered_map<std::pair<float, float>, uint16_t, hash_pair_ff>
@@ -1028,7 +1069,12 @@ gfx_opengl_get_pixel_depth(int fb_id, const std::set<std::pair<float, float>>& c
         }
     }
 
-    glBindFramebuffer(GL_FRAMEBUFFER, current_framebuffer);
+    // Skip framebuffer restore in VR mode
+    // NOTE: This line has a bug - it should be framebuffers[current_framebuffer].fbo
+    // But we'll skip it entirely in VR mode
+    if (!vr_rendering_mode) {
+        glBindFramebuffer(GL_FRAMEBUFFER, framebuffers[current_framebuffer].fbo);
+    }
 
     return res;
 }
@@ -1044,6 +1090,20 @@ FilteringMode gfx_opengl_get_texture_filter() {
 
 void gfx_opengl_enable_srgb_mode() {
     srgb_mode = true;
+}
+
+// VR rendering mode control functions
+void gfx_opengl_set_vr_rendering_mode(bool enabled) {
+    static int log_mode_change = 0;
+    if (log_mode_change < 10 || vr_rendering_mode != enabled) {
+        SPDLOG_INFO("gfx_opengl_set_vr_rendering_mode: {} -> {}", vr_rendering_mode, enabled);
+        log_mode_change++;
+    }
+    vr_rendering_mode = enabled;
+}
+
+bool gfx_opengl_get_vr_rendering_mode() {
+    return vr_rendering_mode;
 }
 
 struct GfxRenderingAPI gfx_opengl_api = { gfx_opengl_get_name,

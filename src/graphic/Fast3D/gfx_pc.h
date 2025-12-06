@@ -156,6 +156,14 @@ struct RSP {
     } texture_scaling_factor;
 
     struct LoadedVertex loaded_vertices[MAX_VERTICES + 4];
+    #ifdef OPENXR_ENABLED
+    // VR rendering state
+    int vr_rendering_active;
+    int vr_current_eye;
+    float vr_projection_override[4][4];
+    float vr_view_offset[4][4];
+    bool vr_matrices_valid;
+    #endif
 };
 
 struct RDP {
@@ -239,6 +247,10 @@ extern uint32_t gfx_msaa_level;
 void gfx_init(struct GfxWindowManagerAPI* wapi, struct GfxRenderingAPI* rapi, const char* game_name,
               bool start_in_fullscreen, uint32_t width = SCREEN_WIDTH, uint32_t height = SCREEN_HEIGHT,
               uint32_t posX = 100, uint32_t posY = 100);
+// Expose g_rsp for VR rendering
+extern RSP g_rsp;
+extern RDP g_rdp;
+
 void gfx_destroy();
 struct GfxRenderingAPI* gfx_get_current_rendering_api();
 void gfx_start_frame();

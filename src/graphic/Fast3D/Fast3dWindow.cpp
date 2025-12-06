@@ -11,6 +11,14 @@
 #include "graphic/Fast3D/gfx_direct3d12.h"
 #include "graphic/Fast3D/gfx_pc.h"
 
+#include "openxr/openxr_manager.h"
+#include "openxr/vr_camera.h"
+#include "openxr/vr_opengl.h"
+#include "openxr/vr_copy.h"
+#include "openxr/vr_renderer.h"
+
+#include <GLES3/gl3.h>
+
 #include <fstream>
 
 namespace Fast {
@@ -88,6 +96,25 @@ void Fast3dWindow::Init() {
     mWindowManagerApi->set_keyboard_callbacks(KeyDown, KeyUp, AllKeysUp);
     mWindowManagerApi->set_mouse_callbacks(MouseButtonDown, MouseButtonUp);
 
+    if (openxr_init()) {
+        auto session = openxr_get_session();
+        auto space = openxr_get_space();
+
+        SPDLOG_WARN("OpenXR initializing");
+
+        if (session == XR_NULL_HANDLE || space == XR_NULL_HANDLE) {
+            SPDLOG_WARN("OpenXR initialized but session/space not valid; disabling VR");
+            openxr_shutdown();
+        } else if (!vr_renderer_init()) {
+            SPDLOG_WARN("VR renderer init failed; disabling VR");
+            openxr_shutdown();
+        } else {
+            SPDLOG_INFO("OpenXR session ready!");
+        }
+    } else {
+        SPDLOG_WARN("OpenXR not available; continuing without VR");
+    }
+
     SetTextureFilter((FilteringMode)CVarGetInteger(CVAR_TEXTURE_FILTER, FILTER_THREE_POINT));
 }
 
@@ -148,6 +175,7 @@ void Fast3dWindow::SetRendererUCode(UcodeHandlers ucode) {
 }
 
 void Fast3dWindow::Close() {
+    openxr_shutdown();
     mWindowManagerApi->close();
 }
 
@@ -163,6 +191,25 @@ bool Fast3dWindow::IsFrameReady() {
     return mWindowManagerApi->is_frame_ready();
 }
 
+#ifdef OPENXR_ENABLED
+static void gfx_setup_vr_matrices_for_eye(int eye) {
+    // Fetch VR projection matrix for this eye
+    g_rsp.vr_matrices_valid = false;
+
+    if (vr_renderer_get_projection_matrix(eye, (float*)g_rsp.vr_projection_override)) {
+        // Fetch VR view matrix (contains IPD offset)
+        SPDLOG_WARN("got vr_renderer_get_projection_matrix");
+
+        if (vr_renderer_get_view_matrix(eye, (float*)g_rsp.vr_view_offset)) {
+            SPDLOG_WARN("got vr_renderer_get_view_matrix");
+
+            g_rsp.vr_matrices_valid = true;
+            g_rsp.vr_current_eye = eye;
+        }
+    }
+}
+#endif
+
 bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordered_map<Mtx*, MtxF>& mtxReplacements) {
     std::shared_ptr<Window> wnd = Ship::Context::GetInstance()->GetWindow();
 
@@ -172,16 +219,139 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
     }
 
     auto gui = wnd->GetGui();
-    // Setup of the backend frames and draw initial Window and GUI menus
-    gui->StartDraw();
-    // Setup game framebuffers to match available window space
-    gfx_start_frame();
-    // Execute the games gfx commands
-    gfx_run(commands, mtxReplacements);
-    // Renders the game frame buffer to the final window and finishes the GUI
-    gui->EndDraw();
-    // Finalize swap buffers
-    gfx_end_frame();
+
+#ifdef OPENXR_ENABLED
+    // Update OpenXR state and get head pose
+    openxr_update();
+    // Update VR camera with head tracking
+    vr_camera_update();
+#endif
+    // Check if VR rendering is active
+    if (vr_renderer_is_initialized()) {
+        SPDLOG_INFO("VR rendering path active");
+        if (!vr_renderer_begin_frame()) {
+            static int once = 0;
+            if (!once) {
+                SPDLOG_WARN("VR frame not ready, falling back to normal rendering");
+                once = 1;
+            }
+
+            SPDLOG_WARN("VR frame not ready, falling back to normal rendering");
+
+            goto normal_rendering;
+        }
+
+        static int first_vr_frame = 1;
+        if (first_vr_frame) {
+            printf("DEBUG: Entering VR rendering path for first time\n");
+            first_vr_frame = 0;
+        }
+        
+        // Initialize VR OpenGL and VR copy if needed
+        static int vr_gl_initialized = 0;
+        static int vr_copy_initialized = 0;
+        if (!vr_gl_initialized) {
+            if (vr_opengl_init()) {
+                vr_gl_initialized = 1;
+                printf("VR OpenGL initialized for rendering\n");
+                
+                // Now initialize VR copy system
+                if (vr_copy_init()) {
+                    vr_copy_initialized = 1;
+                    printf("VR copy system initialized\n");
+                } else {
+                    fprintf(stderr, "Warning: Failed to initialize VR copy system. VR display may not work.\n");
+                }
+            } else {
+                fprintf(stderr, "Failed to initialize VR OpenGL, falling back to normal rendering\n");
+                goto normal_rendering;
+            }
+        }
+
+        // Save current window dimensions to restore after VR
+        auto saved_dimensions = gfx_current_dimensions;
+
+        // Start frame once before rendering both eyes
+        gfx_start_frame();
+
+        // Render to each eye
+        for (int eye = 0; eye < 2; ++eye) {
+            if (!vr_renderer_render_eye(eye)) {
+                SPDLOG_WARN("Failed to acquire swapchain for eye {}", eye);
+                continue;
+            }
+            
+            uint32_t vr_width = 0, vr_height = 0;
+            vr_opengl_get_viewport(eye, &vr_width, &vr_height);
+            gfx_current_dimensions.width = vr_width;
+            gfx_current_dimensions.height = vr_height;
+            gfx_current_dimensions.aspect_ratio = static_cast<float>(vr_width) / (float)vr_height;
+            
+            // Set up per-eye VR matrices
+            gfx_setup_vr_matrices_for_eye(eye);
+            
+            while (glGetError() != GL_NO_ERROR);
+            
+            gfx_opengl_set_vr_rendering_mode(true);
+            
+            static int vr_mode_log = 0;
+            if (vr_mode_log < 10) {
+                SPDLOG_INFO("VR eye {} enabled VR rendering mode", eye);
+                vr_mode_log++;
+            }
+            
+            g_rsp.vr_rendering_active = 1;
+            
+            // Bind VR framebuffer for this eye
+            if (!vr_opengl_begin_eye(eye)) {
+                SPDLOG_WARN("Failed to bind framebuffer for eye {}", eye);
+                g_rsp.vr_rendering_active = 0;
+                gfx_opengl_set_vr_rendering_mode(false);
+                continue;
+            }
+            
+            GLenum err_after_bind = glGetError();
+            if (err_after_bind != GL_NO_ERROR) {
+                SPDLOG_ERROR("GL error after binding VR framebuffer: {}", err_after_bind);
+            }
+            
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+            
+            // Check current framebuffer binding before rendering
+            GLint current_fbo = 0;
+            glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
+            GLuint expected_fbo = vr_opengl_get_framebuffer(eye);
+
+            // Render the game to the VR framebuffer
+            gfx_run(commands, mtxReplacements);
+            
+            // Check if framebuffer is still bound after gfx_run
+            glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
+            
+            gui->StartDraw();
+
+            gui->EndDraw();
+
+            
+            // Disable VR rendering mode
+            gfx_opengl_set_vr_rendering_mode(false);
+            int vr_active_before_reset = g_rsp.vr_rendering_active;
+            g_rsp.vr_rendering_active = 0;
+            
+            vr_opengl_end_eye(eye);
+        }
+
+        // Restore window dimensions
+        gfx_current_dimensions = saved_dimensions;
+
+        vr_renderer_end_frame();
+
+        gfx_end_frame();
+
+        return true;
+    }
+    
+    normal_rendering:
 
     return true;
 }

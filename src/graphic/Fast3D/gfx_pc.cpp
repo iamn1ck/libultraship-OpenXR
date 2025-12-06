@@ -40,6 +40,10 @@
 
 #include <spdlog/fmt/fmt.h>
 
+#ifdef OPENXR_ENABLED
+#include "openxr/vr_renderer.h"
+#endif
+
 uintptr_t gfxFramebuffer;
 std::stack<std::string> currentDir;
 
@@ -1133,6 +1137,24 @@ static void gfx_matrix_mul(float res[4][4], const float a[4][4], const float b[4
     memcpy(res, tmp, sizeof(tmp));
 }
 
+static void mat4_mul(const float* A, const float* B, float* out)
+{
+    for (int col = 0; col < 4; col++)
+    {
+        for (int row = 0; row < 4; row++)
+        {
+            out[col * 4 + row] =
+                A[row +  0] * B[col * 4 + 0] +
+                A[row +  4] * B[col * 4 + 1] +
+                A[row +  8] * B[col * 4 + 2] +
+                A[row + 12] * B[col * 4 + 3];
+        }
+    }
+}
+
+
+// memcpy(dest, src, sizeof(Mat4));
+
 static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
     float matrix[4][4];
 
@@ -1166,11 +1188,23 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
     const int8_t mtx_push = get_attr(MTX_PUSH);
 
     if (parameters & mtx_projection) {
-        if (parameters & mtx_load) {
-            memcpy(g_rsp.P_matrix, matrix, sizeof(matrix));
-        } else {
-            gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
+        // if (parameters & mtx_load) {
+        //     memcpy(g_rsp.P_matrix, matrix, sizeof(matrix));
+        // } else {
+        //     gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
+        // }
+#ifdef OPENXR_ENABLED
+        // Override projection matrix with VR-specific projection when in VR mode
+        if (g_rsp.vr_rendering_active && g_rsp.vr_matrices_valid) {
+
+            // vp = g_rsp.vr_projection_override * g_rsp.vr_view_offset
+            mat4_mul(&g_rsp.vr_projection_override[0][0],
+                    &g_rsp.vr_view_offset[0][0],
+                    &g_rsp.P_matrix[0][0]);
         }
+        gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
+
+#endif
     } else { // G_MTX_MODELVIEW
         if ((parameters & mtx_push) && g_rsp.modelview_matrix_stack_size < 11) {
             ++g_rsp.modelview_matrix_stack_size;

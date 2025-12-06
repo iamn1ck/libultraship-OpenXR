@@ -3,6 +3,18 @@ libultraship (LUS) is a library meant to provide reimplementations of libultra (
 
 LUS uses an asset loading system where data is stored separately from the executable in an archive file ending in `.otr`, which is an [`.mpq`](http://www.zezula.net/en/mpq/main.html) compatible file. This separation the data from the executable follows modern design practices and that it is more mod friendly. All one needs to do is supply a patch `.otr` and the system will automatically replace the data.
 
+##OpenXR Integration
+
+OpenXR support is currently implemented and in a working but work-in-progress state. This integration aims to enable XR functionality on supported Android devices (Quest 2/3)
+
+Current status:
+
+Basic OpenXR initialization and runtime interaction are functional.
+
+Rendering pipeline support is present but still being actively refined.
+
+More details and configuration options will be added as development continues.
+
 ## Contributing
 LUS accepts any and all contributions. You can interact with the project via PRs, issues, email (kenixwhisperwind@gmail.com), or [Discord](https://discord.gg/shipofharkinian).
 Please see [CONTRIBUTING.md](https://github.com/Kenix3/libultraship/blob/main/CONTRIBUTING.md) file for more information.
