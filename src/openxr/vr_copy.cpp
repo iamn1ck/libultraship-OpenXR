@@ -116,6 +116,8 @@ static struct {
     bool useIntermediateImages;  // True if we need to create intermediate Vulkan images
     
     VRCopyEyeState eyes[2];
+    VRCopyEyeState quadLayer;
+    VRCopyEyeState quadLayer2;
     
     VkDevice vkDevice;
     VkPhysicalDevice vkPhysicalDevice;
@@ -129,6 +131,8 @@ static struct {
     false,
     false,
     false,
+    {},
+    {},
     {},
     VK_NULL_HANDLE,
     VK_NULL_HANDLE,
@@ -741,5 +745,507 @@ int vr_copy_framebuffer_to_swapchain(int eye)
 
         printf("DEBUG vr_copy: Copy completed successfully for eye %d\n", eye);
     }
+    return 1;
+}
+
+// Initialize interop for quad layer
+static bool init_quad_interop(void)
+{
+    printf("Initializing VR copy interop for quad layer...\n");
+    
+    VRCopyEyeState* state = &g_vr_copy.quadLayer;
+    if (state->initialized) {
+        return true;
+    }
+    
+    // Get viewport dimensions
+    uint32_t width, height;
+    vr_renderer_get_quad_viewport(&width, &height);
+    
+    if (width == 0 || height == 0) {
+        // Quad layer might not be initialized yet
+        return false;
+    }
+    
+    printf("Quad layer viewport: %ux%u\n", width, height);
+    
+    // Get swapchain image
+    VkImage swapchainImage = vr_renderer_get_quad_swapchain_image();
+    
+    if (swapchainImage == VK_NULL_HANDLE) {
+        fprintf(stderr, "Failed to get quad swapchain image\n");
+        return false;
+    }
+    
+    // Create OpenGL texture for blitting
+    glGenTextures(1, &state->glTexture);
+    glBindTexture(GL_TEXTURE_2D, state->glTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+    // Create framebuffer for the texture
+    glGenFramebuffers(1, &state->glFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, state->glFramebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, state->glTexture, 0);
+    
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "Quad framebuffer incomplete: 0x%x\n", status);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    // Store dimensions
+    state->width = width;
+    state->height = height;
+    
+    // Create Vulkan staging buffer for pixel transfer
+    VkDeviceSize bufferSize = width * height * 4;  // RGBA8
+    
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    VkResult result = vkCreateBuffer(g_vr_copy.vkDevice, &bufferInfo, nullptr, &state->stagingBuffer);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create quad staging buffer: %d\n", result);
+        return false;
+    }
+    
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(g_vr_copy.vkDevice, state->stagingBuffer, &memRequirements);
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    result = vkAllocateMemory(g_vr_copy.vkDevice, &allocInfo, nullptr, &state->stagingMemory);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to allocate quad staging memory: %d\n", result);
+        return false;
+    }
+    
+    result = vkBindBufferMemory(g_vr_copy.vkDevice, state->stagingBuffer, state->stagingMemory, 0);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to bind quad staging buffer memory: %d\n", result);
+        return false;
+    }
+    
+    // Persistently map the staging memory
+    result = vkMapMemory(g_vr_copy.vkDevice, state->stagingMemory, 0, bufferSize, 0, &state->stagingMapped);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to map quad staging memory: %d\n", result);
+        return false;
+    }
+    
+    state->initialized = true;
+    printf("VR copy interop initialized for quad layer\n");
+    
+    return true;
+}
+
+int vr_copy_quad_framebuffer_to_swapchain(void)
+{
+    if (!g_vr_copy.initialized) {
+        return 0;
+    }
+    
+    // Initialize on first use if needed
+    if (!g_vr_copy.quadLayer.initialized) {
+        if (!init_quad_interop()) {
+            return 0;
+        }
+    }
+    
+    VRCopyEyeState* state = &g_vr_copy.quadLayer;
+    
+    // 1) Get the source framebuffer (from VR OpenGL)
+    GLuint sourceFBO = vr_opengl_get_quad_framebuffer();
+    if (sourceFBO == 0) {
+        return 0;
+    }
+    
+    const uint32_t width = state->width;
+    const uint32_t height = state->height;
+    
+    // 2) Save current FBO and pixel-pack alignment
+    GLint oldFB = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFB);
+    
+    GLint oldPack = 0;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &oldPack);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    
+    // 3) Bind the source FBO and read pixels
+    glBindFramebuffer(GL_FRAMEBUFFER, sourceFBO);
+    
+    // Read bottom-left-origin pixels into staging buffer
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, state->stagingMapped);
+    
+    // 4) Flip in CPU to convert from GL's bottom-left to Vulkan's top-left
+    flip_y_rgba8((uint8_t*)state->stagingMapped, width, height);
+    
+    // 5) Restore GL state
+    glBindFramebuffer(GL_FRAMEBUFFER, oldFB);
+    glPixelStorei(GL_PACK_ALIGNMENT, oldPack);
+    
+    // Ensure GL writes are visible before Vulkan reads
+    glFinish();
+    
+    // 6) Vulkan copy
+    VkImage swapchainImage = vr_renderer_get_quad_swapchain_image();
+    if (swapchainImage == VK_NULL_HANDLE) {
+        return 0;
+    }
+    
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    VkResult vkResult = vkBeginCommandBuffer(g_vr_copy.commandBuffer, &beginInfo);
+    if (vkResult != VK_SUCCESS) {
+        return 0;
+    }
+    
+    // Transition swapchain image to TRANSFER_DST_OPTIMAL
+    VkImageMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = swapchainImage;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(
+        g_vr_copy.commandBuffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+    
+    VkBufferImageCopy region = {};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = (VkOffset3D){0, 0, 0};
+    region.imageExtent = (VkExtent3D){width, height, 1};
+    
+    vkCmdCopyBufferToImage(
+        g_vr_copy.commandBuffer,
+        state->stagingBuffer,
+        swapchainImage,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region
+    );
+    
+    // Transition to COLOR_ATTACHMENT_OPTIMAL for OpenXR rendering
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    
+    vkCmdPipelineBarrier(
+        g_vr_copy.commandBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+    
+    vkEndCommandBuffer(g_vr_copy.commandBuffer);
+    
+    // Submit
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &g_vr_copy.commandBuffer;
+    
+    VkResult result = vkQueueSubmit(g_vr_copy.vkQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    if (result != VK_SUCCESS) {
+        return 0;
+    }
+    
+    // Wait for completion
+    vkQueueWaitIdle(g_vr_copy.vkQueue);
+    vkResetCommandBuffer(g_vr_copy.commandBuffer, 0);
+    
+    return 1;
+}
+
+// Initialize interop for quad layer 2
+static bool init_quad2_interop(void)
+{
+    printf("Initializing VR copy interop for quad layer 2...\n");
+    
+    VRCopyEyeState* state = &g_vr_copy.quadLayer2;
+    if (state->initialized) {
+        return true;
+    }
+    
+    // Get viewport dimensions
+    uint32_t width, height;
+    vr_renderer_get_quad_viewport2(&width, &height);
+    
+    if (width == 0 || height == 0) {
+        // Quad layer 2 might not be initialized yet
+        return false;
+    }
+    
+    printf("Quad layer 2 viewport: %ux%u\n", width, height);
+    
+    // Get swapchain image
+    VkImage swapchainImage = vr_renderer_get_quad_swapchain_image2();
+    
+    if (swapchainImage == VK_NULL_HANDLE) {
+        fprintf(stderr, "Failed to get quad swapchain 2 image\n");
+        return false;
+    }
+    
+    // Create OpenGL texture for blitting
+    glGenTextures(1, &state->glTexture);
+    glBindTexture(GL_TEXTURE_2D, state->glTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    
+    // Create framebuffer for the texture
+    glGenFramebuffers(1, &state->glFramebuffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, state->glFramebuffer);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, state->glTexture, 0);
+    
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "Quad framebuffer 2 incomplete: 0x%x\n", status);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+    }
+    
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    
+    // Store dimensions
+    state->width = width;
+    state->height = height;
+    
+    // Create Vulkan staging buffer for pixel transfer
+    VkDeviceSize bufferSize = width * height * 4;  // RGBA8
+    
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = bufferSize;
+    bufferInfo.usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    bufferInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+    
+    VkResult result = vkCreateBuffer(g_vr_copy.vkDevice, &bufferInfo, nullptr, &state->stagingBuffer);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to create quad 2 staging buffer: %d\n", result);
+        return false;
+    }
+    
+    VkMemoryRequirements memRequirements;
+    vkGetBufferMemoryRequirements(g_vr_copy.vkDevice, state->stagingBuffer, &memRequirements);
+    
+    VkMemoryAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+    allocInfo.allocationSize = memRequirements.size;
+    allocInfo.memoryTypeIndex = find_memory_type(memRequirements.memoryTypeBits, 
+        VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+    
+    result = vkAllocateMemory(g_vr_copy.vkDevice, &allocInfo, nullptr, &state->stagingMemory);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to allocate quad 2 staging memory: %d\n", result);
+        return false;
+    }
+    
+    result = vkBindBufferMemory(g_vr_copy.vkDevice, state->stagingBuffer, state->stagingMemory, 0);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to bind quad 2 staging buffer memory: %d\n", result);
+        return false;
+    }
+    
+    // Persistently map the staging memory
+    result = vkMapMemory(g_vr_copy.vkDevice, state->stagingMemory, 0, bufferSize, 0, &state->stagingMapped);
+    if (result != VK_SUCCESS) {
+        fprintf(stderr, "Failed to map quad 2 staging memory: %d\n", result);
+        return false;
+    }
+    
+    state->initialized = true;
+    printf("VR copy interop initialized for quad layer 2\n");
+    
+    return true;
+}
+
+int vr_copy_quad2_framebuffer_to_swapchain(void)
+{
+    if (!g_vr_copy.initialized) {
+        return 0;
+    }
+    
+    // Initialize on first use if needed
+    if (!g_vr_copy.quadLayer2.initialized) {
+        if (!init_quad2_interop()) {
+            return 0;
+        }
+    }
+    
+    VRCopyEyeState* state = &g_vr_copy.quadLayer2;
+    
+    // 1) Get the source framebuffer (from VR OpenGL)
+    GLuint sourceFBO = vr_opengl_get_quad_framebuffer2();
+    if (sourceFBO == 0) {
+        return 0;
+    }
+    
+    const uint32_t width = state->width;
+    const uint32_t height = state->height;
+    
+    // 2) Save current FBO and pixel-pack alignment
+    GLint oldFB = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &oldFB);
+    
+    GLint oldPack = 0;
+    glGetIntegerv(GL_PACK_ALIGNMENT, &oldPack);
+    glPixelStorei(GL_PACK_ALIGNMENT, 4);
+    
+    // 3) Bind the source FBO and read pixels
+    glBindFramebuffer(GL_FRAMEBUFFER, sourceFBO);
+    
+    // Read bottom-left-origin pixels into staging buffer
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, state->stagingMapped);
+    
+    // 4) Flip in CPU to convert from GL's bottom-left to Vulkan's top-left
+    flip_y_rgba8((uint8_t*)state->stagingMapped, width, height);
+    
+    // 5) Restore GL state
+    glBindFramebuffer(GL_FRAMEBUFFER, oldFB);
+    glPixelStorei(GL_PACK_ALIGNMENT, oldPack);
+    
+    // Ensure GL writes are visible before Vulkan reads
+    glFinish();
+    
+    // 6) Vulkan copy
+    VkImage swapchainImage = vr_renderer_get_quad_swapchain_image2();
+    if (swapchainImage == VK_NULL_HANDLE) {
+        return 0;
+    }
+    
+    VkCommandBufferBeginInfo beginInfo = {};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    VkResult vkResult = vkBeginCommandBuffer(g_vr_copy.commandBuffer, &beginInfo);
+    if (vkResult != VK_SUCCESS) {
+        return 0;
+    }
+    
+    // Transition swapchain image to TRANSFER_DST_OPTIMAL
+    VkImageMemoryBarrier barrier = {};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = swapchainImage;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+    barrier.srcAccessMask = 0;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(
+        g_vr_copy.commandBuffer,
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+    
+    VkBufferImageCopy region = {};
+    region.bufferOffset = 0;
+    region.bufferRowLength = 0;
+    region.bufferImageHeight = 0;
+    region.imageSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.imageSubresource.mipLevel = 0;
+    region.imageSubresource.baseArrayLayer = 0;
+    region.imageSubresource.layerCount = 1;
+    region.imageOffset = (VkOffset3D){0, 0, 0};
+    region.imageExtent = (VkExtent3D){width, height, 1};
+    
+    vkCmdCopyBufferToImage(
+        g_vr_copy.commandBuffer,
+        state->stagingBuffer,
+        swapchainImage,
+        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1,
+        &region
+    );
+    
+    // Transition to COLOR_ATTACHMENT_OPTIMAL for OpenXR rendering
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    
+    vkCmdPipelineBarrier(
+        g_vr_copy.commandBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+    
+    vkEndCommandBuffer(g_vr_copy.commandBuffer);
+    
+    // Submit
+    VkSubmitInfo submitInfo = {};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &g_vr_copy.commandBuffer;
+    
+    VkResult result = vkQueueSubmit(g_vr_copy.vkQueue, 1, &submitInfo, VK_NULL_HANDLE);
+    if (result != VK_SUCCESS) {
+        return 0;
+    }
+    
+    // Wait for completion
+    vkQueueWaitIdle(g_vr_copy.vkQueue);
+    vkResetCommandBuffer(g_vr_copy.commandBuffer, 0);
+    
     return 1;
 }

@@ -271,5 +271,285 @@ void vr_opengl_get_viewport(int eye, uint32_t* width, uint32_t* height)
     *height = g_vr_opengl.height[eye];
 }
 
+// Quad layer state
+static struct {
+    int initialized;
+    GLuint framebuffer;
+    GLuint colorTexture;
+    GLuint depthRenderbuffer;
+    uint32_t width;
+    uint32_t height;
+} g_vr_opengl_quad = {0, 0, 0, 0, 0, 0};
+
+// Quad layer 2 state
+static struct {
+    int initialized;
+    GLuint framebuffer;
+    GLuint colorTexture;
+    GLuint depthRenderbuffer;
+    uint32_t width;
+    uint32_t height;
+} g_vr_opengl_quad2 = {0, 0, 0, 0, 0, 0};
+
+int vr_opengl_init_quad(uint32_t width, uint32_t height)
+{
+    if (g_vr_opengl_quad.initialized) {
+        // If dimensions changed, we might need to re-init, but for now assume static
+        return 1;
+    }
+    
+    printf("Initializing VR OpenGL quad layer (%ux%u)...\n", width, height);
+    
+    g_vr_opengl_quad.width = width;
+    g_vr_opengl_quad.height = height;
+    
+    // Generate framebuffer
+    glGenFramebuffers(1, &g_vr_opengl_quad.framebuffer);
+    
+    // Generate texture
+    glGenTextures(1, &g_vr_opengl_quad.colorTexture);
+    
+    // Generate depth renderbuffer
+    glGenRenderbuffers(1, &g_vr_opengl_quad.depthRenderbuffer);
+    
+    // Bind framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl_quad.framebuffer);
+    
+    // Create and attach color texture
+    glBindTexture(GL_TEXTURE_2D, g_vr_opengl_quad.colorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);        
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_vr_opengl_quad.colorTexture, 0);
+    
+    // Create and attach depth renderbuffer
+    glBindRenderbuffer(GL_RENDERBUFFER, g_vr_opengl_quad.depthRenderbuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24_OES, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_vr_opengl_quad.depthRenderbuffer);
+
+    // Check framebuffer completeness
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "Quad framebuffer incomplete: 0x%x\n", status);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return 0;
+    }
+    
+    // Unbind
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    
+    g_vr_opengl_quad.initialized = 1;
+    printf("VR OpenGL quad layer initialized successfully\n");
+    
+    return 1;
+}
+
+int vr_opengl_begin_quad(void)
+{
+    if (!g_vr_opengl_quad.initialized) {
+        return 0;
+    }
+    
+    // Save current framebuffer binding
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &g_vr_opengl.previousFramebuffer);
+    
+    // Bind VR framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl_quad.framebuffer);
+    
+    // Set viewport
+    glViewport(0, 0, g_vr_opengl_quad.width, g_vr_opengl_quad.height);
+    
+    return 1;
+}
+
+void vr_opengl_end_quad(void)
+{
+    if (!g_vr_opengl_quad.initialized) {
+        return;
+    }
+    
+    // Copy framebuffer to Vulkan swapchain image
+    if (vr_copy_is_initialized()) {
+        if (!vr_copy_quad_framebuffer_to_swapchain()) {
+             static int warned = 0;
+            if (!warned) {
+                SPDLOG_WARN("Warning: Failed to copy quad framebuffer to swapchain");
+                warned = 1;
+            }
+        }
+    }
+    
+    // Restore previous framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl.previousFramebuffer);
+}
+
+void vr_opengl_cancel_quad(void)
+{
+    if (!g_vr_opengl_quad.initialized) {
+        return;
+    }
+    // Just restore previous framebuffer without copying
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl.previousFramebuffer);
+}
+
+unsigned int vr_opengl_get_quad_framebuffer(void)
+{
+    return g_vr_opengl_quad.framebuffer;
+}
+
+unsigned int vr_opengl_get_quad_texture(void)
+{
+    return g_vr_opengl_quad.colorTexture;
+}
+
+int vr_opengl_init_quad2(uint32_t width, uint32_t height)
+{
+    if (g_vr_opengl_quad2.initialized) {
+        return 1;
+    }
+    
+    printf("Initializing VR OpenGL quad layer 2 (%ux%u)...\n", width, height);
+    
+    g_vr_opengl_quad2.width = width;
+    g_vr_opengl_quad2.height = height;
+    
+    // Generate framebuffer
+    glGenFramebuffers(1, &g_vr_opengl_quad2.framebuffer);
+    
+    // Generate texture
+    glGenTextures(1, &g_vr_opengl_quad2.colorTexture);
+    
+    // Generate depth renderbuffer
+    glGenRenderbuffers(1, &g_vr_opengl_quad2.depthRenderbuffer);
+    
+    // Bind framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl_quad2.framebuffer);
+    
+    // Create and attach color texture
+    glBindTexture(GL_TEXTURE_2D, g_vr_opengl_quad2.colorTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);        
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, g_vr_opengl_quad2.colorTexture, 0);
+    
+    // Create and attach depth renderbuffer
+    glBindRenderbuffer(GL_RENDERBUFFER, g_vr_opengl_quad2.depthRenderbuffer);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24_OES, width, height);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, g_vr_opengl_quad2.depthRenderbuffer);
+
+    // Check framebuffer completeness
+    GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (status != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "Quad framebuffer 2 incomplete: 0x%x\n", status);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return 0;
+    }
+    
+    // Unbind
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    
+    g_vr_opengl_quad2.initialized = 1;
+    printf("VR OpenGL quad layer 2 initialized successfully\n");
+    
+    return 1;
+}
+
+int vr_opengl_begin_quad2(void)
+{
+    if (!g_vr_opengl_quad2.initialized) {
+        return 0;
+    }
+    
+    // Save current framebuffer binding
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &g_vr_opengl.previousFramebuffer);
+    
+    // Bind VR framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl_quad2.framebuffer);
+    
+    // Set viewport
+    glViewport(0, 0, g_vr_opengl_quad2.width, g_vr_opengl_quad2.height);
+    
+    return 1;
+}
+
+void vr_opengl_end_quad2(void)
+{
+    if (!g_vr_opengl_quad2.initialized) {
+        return;
+    }
+    
+    // Copy framebuffer to Vulkan swapchain image
+    if (vr_copy_is_initialized()) {
+        if (!vr_copy_quad2_framebuffer_to_swapchain()) {
+             static int warned = 0;
+            if (!warned) {
+                SPDLOG_WARN("Warning: Failed to copy quad framebuffer 2 to swapchain");
+                warned = 1;
+            }
+        }
+    }
+    
+    // Restore previous framebuffer
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl.previousFramebuffer);
+}
+
+void vr_opengl_cancel_quad2(void)
+{
+    if (!g_vr_opengl_quad2.initialized) {
+        return;
+    }
+    // Just restore previous framebuffer without copying
+    glBindFramebuffer(GL_FRAMEBUFFER, g_vr_opengl.previousFramebuffer);
+}
+
+unsigned int vr_opengl_get_quad_framebuffer2(void)
+{
+    return g_vr_opengl_quad2.framebuffer;
+}
+
+unsigned int vr_opengl_get_quad_texture2(void)
+{
+    return g_vr_opengl_quad2.colorTexture;
+}
+
+void vr_opengl_draw_hello_triangle(void)
+{
+    // Just draw a simple colored rectangle using glClear and scissor test
+    // This is the most basic rendering possible - no shaders needed
+    
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+    int width = viewport[2];
+    int height = viewport[3];
+    
+    // Enable scissor test to draw different colored sections
+    glEnable(GL_SCISSOR_TEST);
+    
+    // Top half - red with some transparency
+    glScissor(0, height/2, width, height/2);
+    glClearColor(1.0f, 0.0f, 0.0f, 0.8f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    // Bottom half - blue with some transparency
+    glScissor(0, 0, width, height/2);
+    glClearColor(0.0f, 0.0f, 1.0f, 0.8f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    // Middle stripe - green
+    glScissor(0, height/2 - 50, width, 100);
+    glClearColor(0.0f, 1.0f, 0.0f, 0.9f);
+    glClear(GL_COLOR_BUFFER_BIT);
+    
+    glDisable(GL_SCISSOR_TEST);
+}
+
 #endif // RAPI_GL
 

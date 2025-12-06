@@ -163,6 +163,8 @@ struct RSP {
     float vr_projection_override[4][4];
     float vr_view_offset[4][4];
     bool vr_matrices_valid;
+    bool is_ortho_projection;  // True when using orthographic projection (2D HUD)
+    bool has_2d_content;        // True when 2D HUD content (texture rects, ortho, etc) is drawn
     #endif
 };
 
@@ -243,6 +245,9 @@ extern struct XYWidthHeight
     gfx_current_game_window_viewport; // The area of the window the game is drawn to, (0, 0) is top-left corner
 extern uint32_t gfx_msaa_level;
 }
+
+extern bool gfx_render_2d_only;
+extern bool gfx_render_3d_only;
 
 void gfx_init(struct GfxWindowManagerAPI* wapi, struct GfxRenderingAPI* rapi, const char* game_name,
               bool start_in_fullscreen, uint32_t width = SCREEN_WIDTH, uint32_t height = SCREEN_HEIGHT,

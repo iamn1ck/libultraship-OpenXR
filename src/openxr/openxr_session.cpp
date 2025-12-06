@@ -78,6 +78,28 @@ XrSpace createXRSpace(XrSession session)
     return space;
 }
 
+XrSpace createXRViewSpace(XrSession session)
+{
+    XrSpace space;
+
+    XrReferenceSpaceCreateInfo spaceCreateInfo{};
+    spaceCreateInfo.type = XR_TYPE_REFERENCE_SPACE_CREATE_INFO;
+    spaceCreateInfo.referenceSpaceType = XR_REFERENCE_SPACE_TYPE_VIEW;
+    spaceCreateInfo.poseInReferenceSpace = { { 0.0f, 0.0f, 0.0f, 1.0f }, { 0.0f, 0.0f, 0.0f } };
+
+    XrResult result = xrCreateReferenceSpace(session, &spaceCreateInfo, &space);
+
+    if (result != XR_SUCCESS)
+    {
+        std::cerr << "Failed to create OpenXR view reference space: " << result << std::endl;
+        return XR_NULL_HANDLE;
+    }
+
+    std::cout << "OpenXR view reference space created successfully" << std::endl;
+
+    return space;
+}
+
 void destroyXRSpace(XrSpace space)
 {
     if (space != XR_NULL_HANDLE) {

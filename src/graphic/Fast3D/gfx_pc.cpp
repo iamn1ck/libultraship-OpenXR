@@ -111,6 +111,9 @@ struct XYWidthHeight gfx_current_game_window_viewport;
 struct XYWidthHeight gfx_native_dimensions;
 struct XYWidthHeight gfx_prev_native_dimensions;
 
+bool gfx_render_2d_only = false;
+bool gfx_render_3d_only = false;
+
 static bool game_renders_to_framebuffer;
 static int game_framebuffer;
 static int game_framebuffer_msaa_resolved;
@@ -1194,6 +1197,25 @@ static void gfx_sp_matrix(uint8_t parameters, const int32_t* addr) {
         //     gfx_matrix_mul(g_rsp.P_matrix, matrix, g_rsp.P_matrix);
         // }
 #ifdef OPENXR_ENABLED
+        // Detect orthographic vs perspective projection
+        // Orthographic: P[3][2] ≈ 0, Perspective: P[3][2] ≈ -1
+        bool was_ortho = g_rsp.is_ortho_projection;
+        g_rsp.is_ortho_projection = (fabs(matrix[3][2]) < 0.01f);
+        
+        // If we detected orthographic projection, mark that we have 2D content
+        if (g_rsp.is_ortho_projection) {
+            g_rsp.has_2d_content = true;
+        }
+        
+        // Debug logging
+        static int log_count = 0;
+        if (log_count < 20 || was_ortho != g_rsp.is_ortho_projection) {
+            SPDLOG_INFO("Projection Matrix: P[3][2]={}, P[3][3]={}, is_ortho={}, vr_active={}, vr_valid={}", 
+                matrix[3][2], matrix[3][3], g_rsp.is_ortho_projection,
+                g_rsp.vr_rendering_active, g_rsp.vr_matrices_valid);
+            log_count++;
+        }
+        
         // Override projection matrix with VR-specific projection when in VR mode
         if (g_rsp.vr_rendering_active && g_rsp.vr_matrices_valid) {
 
@@ -2351,6 +2373,15 @@ static void gfx_dp_set_fill_color(uint32_t packed_color) {
 }
 
 static void gfx_draw_rectangle(int32_t ulx, int32_t uly, int32_t lrx, int32_t lry) {
+#ifdef OPENXR_ENABLED
+    // Texture rectangles are always 2D screen-space elements (HUD, UI, etc)
+    static int rect_log_count = 0;
+    if (!g_rsp.has_2d_content && rect_log_count < 5) {
+        SPDLOG_INFO("Detected texture rectangle -> marking has_2d_content=true");
+        rect_log_count++;
+    }
+    g_rsp.has_2d_content = true;
+#endif
     uint32_t saved_other_mode_h = g_rdp.other_mode_h;
     uint32_t cycle_type = (g_rdp.other_mode_h & (3U << G_MDSFT_CYCLETYPE));
 
@@ -3290,6 +3321,13 @@ bool gfx_tri1_otr_handler_f3dex2(F3DGfx** cmd0) {
 bool gfx_tri1_handler_f3dex2(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
 
     return false;
@@ -3298,6 +3336,13 @@ bool gfx_tri1_handler_f3dex2(F3DGfx** cmd0) {
 bool gfx_tri1_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
 
     return false;
@@ -3305,6 +3350,13 @@ bool gfx_tri1_handler_f3dex(F3DGfx** cmd0) {
 
 bool gfx_tri1_handler_f3d(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     gfx_sp_tri1(C1(16, 8) / 10, C1(8, 8) / 10, C1(0, 8) / 10, false);
 
@@ -3315,6 +3367,13 @@ bool gfx_tri1_handler_f3d(F3DGfx** cmd0) {
 bool gfx_tri2_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C0(17, 7), C0(9, 7), C0(1, 7), false);
     gfx_sp_tri1(C1(17, 7), C1(9, 7), C1(1, 7), false);
     return false;
@@ -3323,6 +3382,13 @@ bool gfx_tri2_handler_f3dex(F3DGfx** cmd0) {
 bool gfx_quad_handler_f3dex2(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C0(16, 8) / 2, C0(8, 8) / 2, C0(0, 8) / 2, false);
     gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
     return false;
@@ -3330,6 +3396,14 @@ bool gfx_quad_handler_f3dex2(F3DGfx** cmd0) {
 
 bool gfx_quad_handler_f3dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_sp_tri1(C1(16, 8) / 2, C1(8, 8) / 2, C1(0, 8) / 2, false);
     gfx_sp_tri1(C1(16, 8) / 2, C1(0, 8) / 2, C1(24, 8) / 2, false);
     return false;
@@ -3748,6 +3822,12 @@ bool gfx_set_combine_handler_rdp(F3DGfx** cmd0) {
 
 bool gfx_tex_rect_and_flip_handler_rdp(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    
+    if (gfx_render_3d_only) {
+        return false;
+    }
+
     int8_t opcode = (int8_t)(cmd->words.w0 >> 24);
     int32_t lrx, lry, tile, ulx, uly;
     uint32_t uls, ult, dsdx, dtdy;
@@ -3773,6 +3853,11 @@ bool gfx_tex_rect_and_flip_handler_rdp(F3DGfx** cmd0) {
 
 bool gfx_tex_rect_wide_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_3d_only) {
+        return false;
+    }
+
     int8_t opcode = (int8_t)(cmd->words.w0 >> 24);
     int32_t lrx, lry, tile, ulx, uly;
     uint32_t uls, ult, dsdx, dtdy;
@@ -3796,6 +3881,11 @@ bool gfx_tex_rect_wide_handler_custom(F3DGfx** cmd0) {
 
 bool gfx_image_rect_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *cmd0;
+
+    if (gfx_render_3d_only) {
+        return false;
+    }
+
     int16_t tile, iw, ih;
     int16_t x0, y0, s0, t0;
     int16_t x1, y1, s1, t1;
@@ -3820,12 +3910,27 @@ bool gfx_image_rect_handler_custom(F3DGfx** cmd0) {
 bool gfx_fill_rect_handler_rdp(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_dp_fill_rectangle(C1(12, 12), C1(0, 12), C0(12, 12), C0(0, 12));
     return false;
 }
 
 bool gfx_fill_wide_rect_handler_custom(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     int32_t lrx, lry, ulx, uly;
 
     lrx = (int32_t)(C0(0, 24) << 8) >> 8;
@@ -3869,6 +3974,13 @@ bool gfx_rdp_set_other_mode_rdp(F3DGfx** cmd0) {
 bool gfx_bg_copy_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     if (!markerOn) {
         gfx_s2dex_bg_copy((F3DuObjBg*)cmd->words.w1); // not seg_addr here it seems
     }
@@ -3878,12 +3990,26 @@ bool gfx_bg_copy_handler_s2dex(F3DGfx** cmd0) {
 bool gfx_bg_1cyc_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
 
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
+
     gfx_s2dex_bg_1cyc((F3DuObjBg*)cmd->words.w1);
     return false;
 }
 
 bool gfx_obj_rectangle_handler_s2dex(F3DGfx** cmd0) {
     F3DGfx* cmd = *(cmd0);
+
+    if (gfx_render_2d_only && !g_rsp.is_ortho_projection) {
+        return false;
+    }
+    if (gfx_render_3d_only && g_rsp.is_ortho_projection) {
+        return false;
+    }
 
     if (!markerOn) {
         gfx_s2dex_rect_copy((F3DuObjSprite*)cmd->words.w1); // not seg_addr here it seems
@@ -4191,6 +4317,10 @@ static void gfx_sp_reset() {
     g_rsp.lookat[1].dir[2] = 0;
     calculate_normal_dir(&g_rsp.lookat[0], g_rsp.current_lookat_coeffs[0]);
     calculate_normal_dir(&g_rsp.lookat[1], g_rsp.current_lookat_coeffs[1]);
+#ifdef OPENXR_ENABLED
+    g_rsp.is_ortho_projection = false;
+    g_rsp.has_2d_content = false;
+#endif
 }
 
 void gfx_get_dimensions(uint32_t* width, uint32_t* height, int32_t* posX, int32_t* posY) {

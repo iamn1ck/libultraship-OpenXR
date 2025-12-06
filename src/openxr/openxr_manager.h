@@ -48,6 +48,7 @@ int openxr_get_head_position(float* x, float* y, float* z);
 XrInstance openxr_get_instance(void);
 XrSession openxr_get_session(void);
 XrSpace openxr_get_space(void);
+XrSpace openxr_get_view_space(void);
 XrSystemId openxr_get_system_id(void);
 
 // Get Vulkan handles for VR interop (C++ only)

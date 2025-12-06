@@ -25,6 +25,7 @@ void destroyXRSession(XrSession session);
 
 // Space management
 XrSpace createXRSpace(XrSession session);
+XrSpace createXRViewSpace(XrSession session);
 void destroyXRSpace(XrSpace space);
 
 #ifdef __cplusplus

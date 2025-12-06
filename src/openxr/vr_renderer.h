@@ -51,6 +51,37 @@ void vr_renderer_get_viewport(int eye, uint32_t* width, uint32_t* height);
 int vr_renderer_get_eye_pose(int eye, float* position_x, float* position_y, float* position_z,
                                float* orientation_x, float* orientation_y, float* orientation_z, float* orientation_w);
 
+// Initialize quad layer
+// Returns 1 on success, 0 on failure
+int vr_renderer_init_quad_layer(uint32_t width, uint32_t height);
+
+// Begin rendering to quad layer
+// Returns 1 on success, 0 on failure
+int vr_renderer_render_quad_layer(void);
+
+// Set quad layer pose
+// position: x, y, z in meters
+// orientation: quaternion (x, y, z, w)
+void vr_renderer_set_quad_layer_pose(float position_x, float position_y, float position_z,
+                                     float orientation_x, float orientation_y, float orientation_z, float orientation_w);
+
+// Set quad layer size
+// width, height in meters
+// Set quad layer size
+// width, height in meters
+void vr_renderer_set_quad_layer_size(float width, float height);
+
+// Get quad layer viewport dimensions
+void vr_renderer_get_quad_viewport(uint32_t* width, uint32_t* height);
+
+// Quad layer 2 functions
+int vr_renderer_init_quad_layer2(uint32_t width, uint32_t height);
+int vr_renderer_render_quad_layer2(void);
+void vr_renderer_set_quad_layer2_pose(float position_x, float position_y, float position_z,
+                                     float orientation_x, float orientation_y, float orientation_z, float orientation_w);
+void vr_renderer_set_quad_layer2_size(float width, float height);
+void vr_renderer_get_quad_viewport2(uint32_t* width, uint32_t* height);
+
 #ifdef __cplusplus
 }
 
@@ -67,6 +98,14 @@ uint32_t vr_renderer_get_swapchain_format(int eye);
 
 // Get the number of swapchain images per eye
 uint32_t vr_renderer_get_swapchain_image_count(int eye);
+
+// Get the current swapchain image for the quad layer
+// Returns VK_NULL_HANDLE if not available
+VkImage vr_renderer_get_quad_swapchain_image(void);
+
+// Get the current swapchain image for quad layer 2
+// Returns VK_NULL_HANDLE if not available
+VkImage vr_renderer_get_quad_swapchain_image2(void);
 #endif
 
 #endif // VR_RENDERER_H

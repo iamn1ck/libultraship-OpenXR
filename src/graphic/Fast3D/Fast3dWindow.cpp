@@ -323,14 +323,15 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
             GLuint expected_fbo = vr_opengl_get_framebuffer(eye);
 
             // Render the game to the VR framebuffer
+            gfx_render_3d_only = true;
             gfx_run(commands, mtxReplacements);
+            gfx_render_3d_only = false;
             
             // Check if framebuffer is still bound after gfx_run
             glGetIntegerv(GL_FRAMEBUFFER_BINDING, &current_fbo);
             
-            gui->StartDraw();
-
-            gui->EndDraw();
+            // gui->StartDraw(); // Moved to Quad Layer
+            // gui->EndDraw();   // Moved to Quad Layer
 
             
             // Disable VR rendering mode
@@ -342,6 +343,160 @@ bool Fast3dWindow::DrawAndRunGraphicsCommands(Gfx* commands, const std::unordere
         }
 
         // Restore window dimensions
+        gfx_current_dimensions = saved_dimensions;
+
+        // Render Quad Layer (ImGui)
+        // Render Quad Layer (ImGui)
+        static bool quad_initialized = false;
+        if (!quad_initialized) {
+            // Initialize quad layer (3840x2160 for better UI resolution)
+            if (vr_renderer_init_quad_layer(3840, 2160)) {
+                // Set pose (1.5m in front, slightly up)
+                vr_renderer_set_quad_layer_pose(0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+                vr_renderer_set_quad_layer_size(1.6f, 0.9f); // 16:9 aspect ratio
+                
+                // Initialize OpenGL for quad
+                vr_opengl_init_quad(3840, 2160);
+                
+                quad_initialized = true;
+                printf("Quad layer initialized for ImGui\n");
+            }
+        }
+        
+        if (quad_initialized) {
+            // Always bind quad FBO to capture ImGui rendering
+            if (vr_opengl_begin_quad()) {
+                // Clear to transparent black
+                glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Transparent background
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                
+                // Set dimensions for ImGui
+                gfx_current_dimensions.width = 3840;
+                gfx_current_dimensions.height = 2160;
+                
+                // Render ImGui
+                gui->StartDraw();
+                gui->EndDraw();
+                
+                // Only submit if visible
+                if (gui->GetMenuOrMenubarVisible()) {
+                    if (vr_renderer_render_quad_layer()) {
+                        vr_opengl_end_quad(); // Copies and unbinds
+                    } else {
+                        vr_opengl_cancel_quad(); // Just unbinds
+                    }
+                } else {
+                    vr_opengl_cancel_quad(); // Just unbinds
+                }
+            }
+        }
+
+        // Render Quad Layer 2 (2D HUD / Orthographic content)
+        static bool quad2_initialized = false;
+        if (!quad2_initialized) {
+            // Initialize quad layer 2 with same resolution as quad layer 1
+            if (vr_renderer_init_quad_layer2(3840, 2160)) {
+                // Set pose - same position as quad layer 1 (1m in front)
+                vr_renderer_set_quad_layer2_pose(0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f);
+                vr_renderer_set_quad_layer2_size(1.6f, 0.9f); // Same 16:9 aspect ratio
+                
+                // Initialize OpenGL for quad 2
+                vr_opengl_init_quad2(3840, 2160);
+                
+                quad2_initialized = true;
+                printf("Quad layer 2 initialized for 2D HUD rendering\n");
+            }
+        }
+        
+        // Check if any 2D HUD content was drawn during eye rendering
+        // This includes orthographic projections AND texture rectangles (the primary HUD rendering method)
+        // If so, re-render to quad layer 2
+        static int quad2_log = 0;
+        if (quad2_log < 10) {
+            SPDLOG_INFO("Quad2: initialized={}, is_ortho={}, has_2d={}", quad2_initialized, g_rsp.is_ortho_projection, g_rsp.has_2d_content);
+            quad2_log++;
+        }
+        
+        if (quad2_initialized && g_rsp.has_2d_content) {
+            SPDLOG_INFO("Rendering to quad layer 2!");
+            
+            // Clear any previous GL errors
+            while (glGetError() != GL_NO_ERROR);
+            
+            if (vr_opengl_begin_quad2()) {
+                // Check for GL errors after binding
+                GLenum err = glGetError();
+                if (err != GL_NO_ERROR) {
+                    SPDLOG_ERROR("GL error after vr_opengl_begin_quad2: {}", err);
+                }
+                
+                // Verify framebuffer is complete
+                GLenum status = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+                if (status != GL_FRAMEBUFFER_COMPLETE) {
+                    SPDLOG_ERROR("Quad2 framebuffer not complete: {}", status);
+                }
+                
+                // Clear to transparent background
+                glDisable(GL_SCISSOR_TEST);
+                glClearColor(0.0f, 0.0f, 0.0f, 0.0f); // Fully transparent
+                glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                
+                // Set dimensions for 2D HUD
+                gfx_current_dimensions.width = 3840;
+                gfx_current_dimensions.height = 2160;
+
+                // this needs to be set in otrglobals to match the quad aspect ratio
+                gfx_current_dimensions.aspect_ratio = static_cast<float>(3840) / (float)2160;
+
+                
+                // Disable VR matrix overrides for orthographic rendering
+                g_rsp.vr_rendering_active = 0;
+                
+                // Reset the 2D content flag before re-render to track what gets drawn
+                g_rsp.has_2d_content = false;
+                SPDLOG_INFO("Re-rendering for quad2 (has_2d_content reset to false before gfx_run)");
+                
+                // IMPORTANT: Enable VR rendering mode to prevent gfx_run from unbinding our FBO
+                gfx_opengl_set_vr_rendering_mode(true);
+                
+                // Enable 2D-only filtering to skip 3D geometry
+                gfx_render_2d_only = true;
+                gfx_render_3d_only = false;
+                
+                // Re-render the commands to capture orthographic content
+                gfx_run(commands, mtxReplacements);
+                
+                // Disable 2D-only filtering
+                gfx_render_2d_only = false;
+                
+                // Disable VR rendering mode again
+                gfx_opengl_set_vr_rendering_mode(false);
+                
+                SPDLOG_INFO("After quad2 gfx_run: has_2d_content={}", g_rsp.has_2d_content);
+                
+                // Check for GL errors after rendering
+                err = glGetError();
+                if (err != GL_NO_ERROR) {
+                    SPDLOG_ERROR("GL error after quad2 gfx_run: {}", err);
+                }
+                
+                // Re-enable VR mode for the rest of the frame logic if needed (though we are near end)
+                g_rsp.vr_rendering_active = 1;
+                
+                // Submit the quad layer
+                if (vr_renderer_render_quad_layer2()) {
+                    SPDLOG_INFO("Successfully called vr_renderer_render_quad_layer2");
+                    vr_opengl_end_quad2();
+                } else {
+                    SPDLOG_WARN("vr_renderer_render_quad_layer2 returned false");
+                    vr_opengl_cancel_quad2();
+                }
+            } else {
+                SPDLOG_ERROR("vr_opengl_begin_quad2 failed");
+            }
+        }
+
+        // Restore dimensions again just in case
         gfx_current_dimensions = saved_dimensions;
 
         vr_renderer_end_frame();
