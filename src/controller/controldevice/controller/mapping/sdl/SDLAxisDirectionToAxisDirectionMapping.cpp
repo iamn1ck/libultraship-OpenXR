@@ -4,6 +4,7 @@
 #include "window/gui/IconsFontAwesome4.h"
 #include "public/bridge/consolevariablebridge.h"
 #include "Context.h"
+#include "openxr/openxr_input.h"
 
 #define MAX_SDL_RANGE (float)INT16_MAX
 
@@ -24,6 +25,13 @@ float SDLAxisDirectionToAxisDirectionMapping::GetNormalizedAxisDirectionValue() 
 
     // todo: i don't like making a vector here, not sure what a better solution is
     std::vector<float> normalizedValues = {};
+
+    // Check OpenXR
+    int16_t xrAxisValue = openxr_get_axis(mControllerAxis);
+    if ((mAxisDirection == POSITIVE && xrAxisValue > 0) || (mAxisDirection == NEGATIVE && xrAxisValue < 0)) {
+        normalizedValues.push_back(fabs(xrAxisValue * MAX_AXIS_RANGE / MAX_SDL_RANGE));
+    }
+
     for (const auto& [instanceId, gamepad] :
          Context::GetInstance()->GetControlDeck()->GetConnectedPhysicalDeviceManager()->GetConnectedSDLGamepadsForPort(
              mPortIndex)) {

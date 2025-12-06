@@ -4,6 +4,7 @@
 #include "vulkan_instance.h"
 #include "vulkan_device.h"
 #include "vr_renderer.h"
+#include "openxr_input.h"
 
 #include <iostream>
 #include <set>
@@ -90,6 +91,11 @@ int openxr_init(void)
         std::cerr << "Failed to get OpenXR system. VR will not be available." << std::endl;
         openxr_shutdown();
         return 0;
+    }
+
+    // Initialize Input (create actions)
+    if (!openxr_input_init(g_openxr_state.xrInstance)) {
+        SPDLOG_WARN("Failed to initialize OpenXR input");
     }
 
     // Get Vulkan requirements
@@ -180,6 +186,11 @@ int openxr_init(void)
         return 0;
     }
 
+    // Attach input action sets
+    if (!openxr_input_attach_session(g_openxr_state.xrSession)) {
+        SPDLOG_WARN("Failed to attach OpenXR input action sets");
+    }
+
     // Create reference space
     g_openxr_state.xrSpace = createXRSpace(g_openxr_state.xrSession);
     if (g_openxr_state.xrSpace == XR_NULL_HANDLE) {
@@ -222,6 +233,8 @@ void openxr_shutdown(void)
     }
 
     std::cout << "Shutting down OpenXR context..." << std::endl;
+    
+    openxr_input_shutdown();
     
     // Shutdown VR renderer first
     vr_renderer_shutdown();
@@ -340,6 +353,9 @@ int openxr_update(void)
     if (!g_openxr_state.sessionRunning) {
         return 0;
     }
+
+    // Sync Input
+    openxr_input_sync(g_openxr_state.xrSession);
 
     // Wait for next frame
     XrFrameWaitInfo frameWaitInfo{};

@@ -4,6 +4,7 @@
 #include "window/gui/IconsFontAwesome4.h"
 #include "public/bridge/consolevariablebridge.h"
 #include "Context.h"
+#include "openxr/openxr_input.h"
 
 namespace Ship {
 SDLAxisDirectionToButtonMapping::SDLAxisDirectionToButtonMapping(uint8_t portIndex, CONTROLLERBUTTONS_T bitmask,
@@ -29,6 +30,16 @@ void SDLAxisDirectionToButtonMapping::UpdatePad(CONTROLLERBUTTONS_T& padButtons)
                                       ->GetControlDeck()
                                       ->GetGlobalSDLDeviceSettings()
                                       ->GetTriggerAxisThresholdPercentage();
+    }
+
+    auto axisMinValue = SDL_JOYSTICK_AXIS_MAX * (axisThresholdPercentage / 100.0f);
+
+    // Check OpenXR
+    int16_t xrAxisValue = openxr_get_axis(mControllerAxis);
+    if ((mAxisDirection == POSITIVE && xrAxisValue > axisMinValue) ||
+        (mAxisDirection == NEGATIVE && xrAxisValue < -axisMinValue)) {
+        padButtons |= mBitmask;
+        return;
     }
 
     for (const auto& [instanceId, gamepad] :
