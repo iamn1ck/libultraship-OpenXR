@@ -12,6 +12,7 @@
 #include "graphic/Fast3D/gfx_pc.h"
 
 #include "openxr/openxr_manager.h"
+#include "openxr/openxr_enabled.h"
 #include "openxr/vr_camera.h"
 #include "openxr/vr_opengl.h"
 #include "openxr/vr_copy.h"
@@ -96,7 +97,8 @@ void Fast3dWindow::Init() {
     mWindowManagerApi->set_keyboard_callbacks(KeyDown, KeyUp, AllKeysUp);
     mWindowManagerApi->set_mouse_callbacks(MouseButtonDown, MouseButtonUp);
 
-    if (openxr_init()) {
+    // Check runtime flag to see if OpenXR should be initialized
+    if (is_openxr_enabled() && openxr_init()) {
         auto session = openxr_get_session();
         auto space = openxr_get_space();
 
@@ -112,7 +114,11 @@ void Fast3dWindow::Init() {
             SPDLOG_INFO("OpenXR session ready!");
         }
     } else {
-        SPDLOG_WARN("OpenXR not available; continuing without VR");
+        if (!is_openxr_enabled()) {
+            SPDLOG_INFO("OpenXR disabled for this activity");
+        } else {
+            SPDLOG_WARN("OpenXR not available; continuing without VR");
+        }
     }
 
     SetTextureFilter((FilteringMode)CVarGetInteger(CVAR_TEXTURE_FILTER, FILTER_THREE_POINT));
